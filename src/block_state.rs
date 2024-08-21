@@ -47,28 +47,25 @@ impl BlockState {
         NbtTag::Compound(compound)
     }
 
-    // Deserialize an NBT tag into a BlockState
-    pub fn from_nbt(nbt: &NbtTag) -> Result<Self, String> {
-        if let NbtTag::Compound(compound) = nbt {
-            let name = compound
-                .get::<_, &String>("Name")
-                .map_err(|e| format!("Failed to get Name: {}", e))?
-                .clone();
+    pub fn from_nbt(compound: &NbtCompound) -> Result<Self, String> {
+        let name = compound
+            .get::<_, &String>("Name")
+            .map_err(|e| format!("Failed to get Name: {}", e))?
+            .clone();
 
-            let mut properties = HashMap::new();
-            if let Ok(props) = compound.get::<_, &NbtCompound>("Properties") {
-                for (key, value) in props.inner() {
-                    if let NbtTag::String(value_str) = value {
-                        properties.insert(key.clone(), value_str.clone());
-                    }
+        let mut properties = HashMap::new();
+        if let Ok(props) = compound.get::<_, &NbtCompound>("Properties") {
+            for (key, value) in props.inner() {
+                if let NbtTag::String(value_str) = value {
+                    properties.insert(key.clone(), value_str.clone());
                 }
             }
-
-            Ok(BlockState { name, properties })
-        } else {
-            Err("Unsupported NBT tag type".to_string())
         }
+
+        Ok(BlockState { name, properties })
     }
+
+
 
 
 

@@ -6,7 +6,6 @@ impl std::fmt::Debug for UniversalSchematic {
         f.debug_struct("UniversalSchematic")
             .field("metadata", &self.metadata)
             .field("regions", &self.regions.keys().collect::<Vec<_>>())
-            .field("palette_size", &self.palette.len())
             .finish()
     }
 }
@@ -15,7 +14,6 @@ impl std::fmt::Debug for UniversalSchematic {
 pub fn print_schematic(schematic: &UniversalSchematic) {
     println!("Schematic:");
     print_metadata(&schematic.metadata);
-    println!("Palette size: {}", schematic.palette.len());
     println!("Regions:");
     for (name, region) in &schematic.regions {
         print_region(name, region, schematic);
@@ -25,6 +23,7 @@ pub fn print_schematic(schematic: &UniversalSchematic) {
 #[allow(dead_code)]
 pub fn print_region(name: &str, region: &Region, schematic: &UniversalSchematic) {
     println!("  Region: {}", name);
+
     println!("    Position: {:?}", region.position);
     println!("    Size: {:?}", region.size);
     println!("    Blocks:");

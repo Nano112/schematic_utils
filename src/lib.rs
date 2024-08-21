@@ -5,13 +5,11 @@ mod entity;
 mod block_entity;
 mod utils;
 mod formats;
-mod palette;
 mod print_utils;
 mod bounding_box;
 mod metadata;
 
 pub use region::Region;
-pub use palette::GlobalPalette;
 pub use block_state::BlockState;
 pub use entity::Entity;
 pub use block_entity::BlockEntity;

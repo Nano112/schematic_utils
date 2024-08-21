@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
-use crate::{Region, GlobalPalette, BlockState, Entity, BlockEntity};
+use crate::{Region, BlockState, Entity, BlockEntity};
 use crate::bounding_box::BoundingBox;
 use crate::metadata::Metadata;
 
@@ -9,7 +9,6 @@ use crate::metadata::Metadata;
 pub struct UniversalSchematic {
     pub metadata: Metadata,
     pub regions: HashMap<String, Region>,
-    pub palette: GlobalPalette,
     default_region_name: String,
 }
 
@@ -21,31 +20,15 @@ impl UniversalSchematic {
                 ..Metadata::default()
             },
             regions: HashMap::new(),
-            palette: GlobalPalette::new(),
             default_region_name: "Main".to_string(),
         }
     }
 
-    pub fn get_json_string(&self) -> Result<String, String> {
-        // Attempt to serialize the name
-        let metadata_json = serde_json::to_string(&self.metadata)
-            .map_err(|e| format!("Failed to serialize 'metadata' in UniversalSchematic: {}", e))?;
-
-        // Attempt to serialize the regions
-        let regions_json = serde_json::to_string(&self.regions)
-            .map_err(|e| format!("Failed to serialize 'regions' in UniversalSchematic: {}", e))?;
-
-        // Attempt to serialize the palette
-        let palette_json = serde_json::to_string(&self.palette)
-            .map_err(|e| format!("Failed to serialize 'palette' in UniversalSchematic: {}", e))?;
-
-        // Combine everything into a single JSON object manually
-        let combined_json = format!(
-            "{{\"metadata\":{},\"regions\":{},\"palette\":{}}}",
-            metadata_json, regions_json, palette_json
-        );
-
-        Ok(combined_json)
+    pub fn resize(&mut self, size: (i32, i32, i32)) {
+        let region = self.regions.entry(self.default_region_name.clone()).or_insert_with(|| {
+            Region::new(self.default_region_name.clone(), (0, 0, 0), size)
+        });
+        region.resize(size);
     }
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockState) -> bool {
@@ -58,23 +41,52 @@ impl UniversalSchematic {
             Region::new(region_name.to_string(), (x, y, z), (1, 1, 1))
         });
 
-        // Expand the region if necessary
-        region.expand_to_fit(x, y, z);
-
-        let block_index = self.palette.get_or_insert(block);
-        region.set_block_index(x, y, z, block_index)
+        region.set_block(x, y, z, block)
     }
 
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<&BlockState> {
         for region in self.regions.values() {
             if region.get_bounding_box().contains((x, y, z)) {
-                if let Some(block) = self.get_block_from_region(&region.name, x, y, z) {
-                    return Some(block);
-                }
+                return region.get_block(x, y, z);
             }
         }
         None
     }
+
+
+    pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
+        self.regions.get(region_name).and_then(|region| region.get_block(x, y, z))
+    }
+
+
+    pub fn get_json_string(&self) -> Result<String, String> {
+        // Attempt to serialize the name
+        let metadata_json = serde_json::to_string(&self.metadata)
+            .map_err(|e| format!("Failed to serialize 'metadata' in UniversalSchematic: {}", e))?;
+
+        // Attempt to serialize the regions
+        let regions_json = serde_json::to_string(&self.regions)
+            .map_err(|e| format!("Failed to serialize 'regions' in UniversalSchematic: {}", e))?;
+
+
+        // Combine everything into a single JSON object manually
+        let combined_json = format!(
+            "{{\"metadata\":{},\"regions\":{}}}",
+            metadata_json, regions_json
+        );
+
+        Ok(combined_json)
+    }
+
+    fn total_blocks(&self) -> i32 {
+        self.regions.values().map(|r| r.count_blocks() as i32).sum()
+    }
+
+    fn total_volume(&self) -> i32 {
+        self.regions.values().map(|r| r.volume() as i32).sum()
+    }
+
+
 
     pub fn get_region_bounding_box(&self, region_name: &str) -> Option<BoundingBox> {
         self.regions.get(region_name).map(|region| region.get_bounding_box())
@@ -92,11 +104,6 @@ impl UniversalSchematic {
         Some(bounding_box)
     }
 
-    pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
-        self.regions.get(region_name)
-            .and_then(|region| region.get_block_index(x, y, z))
-            .and_then(|block_index| self.palette.get(block_index))
-    }
 
     pub fn add_region(&mut self, region: Region) -> bool {
         if self.regions.contains_key(&region.name) {
@@ -170,29 +177,22 @@ impl UniversalSchematic {
     pub fn to_nbt(&self) -> NbtCompound {
         let mut root = NbtCompound::new();
 
-        // Serialize name
         root.insert("Metadata", self.metadata.to_nbt());
 
-        // Serialize regions
         let mut regions_tag = NbtCompound::new();
         for (name, region) in &self.regions {
             regions_tag.insert(name, region.to_nbt());
         }
         root.insert("Regions", NbtTag::Compound(regions_tag));
 
-        // Serialize palette
-        root.insert("Palette", self.palette.to_nbt());
-
-        // Serialize default region name
         root.insert("DefaultRegion", NbtTag::String(self.default_region_name.clone()));
 
         root
     }
 
     pub fn from_nbt(nbt: NbtCompound) -> Result<Self, String> {
-        let metadata = Metadata::from_nbt( nbt.get::<_, &NbtCompound>("Metadata")
-                                               .map_err(|e| format!("Failed to get Metadata: {}", e)).unwrap()
-        )?;
+        let metadata = Metadata::from_nbt(nbt.get::<_, &NbtCompound>("Metadata")
+            .map_err(|e| format!("Failed to get Metadata: {}", e))?)?;
 
         let regions_tag = nbt.get::<_, &NbtCompound>("Regions")
             .map_err(|e| format!("Failed to get Regions: {}", e))?;
@@ -203,9 +203,6 @@ impl UniversalSchematic {
             }
         }
 
-        let palette = GlobalPalette::from_nbt(nbt.get::<_, &NbtCompound>("Palette")
-            .map_err(|e| format!("Failed to get Palette: {}", e))?)?;
-
         let default_region_name = nbt.get::<_, &str>("DefaultRegion")
             .map_err(|e| format!("Failed to get DefaultRegion: {}", e))?
             .to_string();
@@ -213,10 +210,11 @@ impl UniversalSchematic {
         Ok(UniversalSchematic {
             metadata,
             regions,
-            palette,
             default_region_name,
         })
     }
+
+
     pub fn get_bounding_box(&self) -> BoundingBox {
         let mut bounding_box = BoundingBox::new((i32::MAX, i32::MAX, i32::MAX), (i32::MIN, i32::MIN, i32::MIN));
 
@@ -228,13 +226,13 @@ impl UniversalSchematic {
         bounding_box
     }
 
-    pub fn to_schematic(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        crate::formats::schematic::to_schematic(self)
-    }
-
-    pub fn from_schematic(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-        crate::formats::schematic::from_schematic(data)
-    }
+    // pub fn to_schematic(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    //     crate::formats::schematic::to_schematic(self)
+    // }
+    //
+    // pub fn from_schematic(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+    //     crate::formats::schematic::from_schematic(data)
+    // }
 
 }
 
@@ -260,7 +258,7 @@ mod tests {
 
         // Check that the default region was created and expanded
         let default_region = schematic.get_region("Main").unwrap();
-        assert_eq!(default_region.size, (6, 6, 6));
+        assert_eq!(default_region.size, (9, 9, 9));
 
         // Test explicit region creation and manipulation
         let obsidian = BlockState::new("minecraft:obsidian".to_string());
@@ -303,7 +301,8 @@ mod tests {
 
         // Test that blocks outside the region are not present
         assert_eq!(schematic.get_block(999, 1000, 1000), None);
-        assert_eq!(schematic.get_block(1001, 1000, 1000), None);
+        // Since the schematic region scaling scales by a factor of 1.5, we need to check 2 blocks away (we apply a ceil)  since we expanded the region (previously 1x1x1)
+        assert_eq!(schematic.get_block(1002, 1000, 1000), None);
     }
 
     #[test]
@@ -318,11 +317,11 @@ mod tests {
 
         let main_region = schematic.get_region("Main").unwrap();
         assert_eq!(main_region.position, (0, 0, 0));
-        assert_eq!(main_region.size, (11, 21, 31));
+        assert_eq!(main_region.size, (17, 32, 47));
 
         assert_eq!(schematic.get_block(0, 0, 0), Some(&block1));
         assert_eq!(schematic.get_block(10, 20, 30), Some(&block2));
-        assert_eq!(schematic.get_block(5, 10, 15), None);
+        assert_eq!(schematic.get_block(5, 10, 15), Some(&BlockState::new("minecraft:air".to_string())));
     }
 
     #[test]
@@ -422,22 +421,23 @@ mod tests {
     }
 
     #[test]
-    fn test_palette_operations() {
-        let mut palette = GlobalPalette::new();
+    fn test_region_palette_operations() {
+        let mut region = Region::new("Test".to_string(), (0, 0, 0), (2, 2, 2));
 
         let stone = BlockState::new("minecraft:stone".to_string());
         let dirt = BlockState::new("minecraft:dirt".to_string());
 
-        assert_eq!(palette.get_or_insert(stone.clone()), 1);
-        assert_eq!(palette.get_or_insert(dirt.clone()), 2);
-        assert_eq!(palette.get_or_insert(stone.clone()), 1);
+        region.set_block(0, 0, 0, stone.clone());
+        region.set_block(0, 1, 0, dirt.clone());
+        region.set_block(1, 0, 0, stone.clone());
 
-        assert_eq!(palette.get(0), Some(&BlockState::new("minecraft:air".to_string())));
-        assert_eq!(palette.get(1), Some(&stone));
-        assert_eq!(palette.get(2), Some(&dirt));
-        assert_eq!(palette.get(3), None);
+        assert_eq!(region.get_block(0, 0, 0), Some(&stone));
+        assert_eq!(region.get_block(0, 1, 0), Some(&dirt));
+        assert_eq!(region.get_block(1, 0, 0), Some(&stone));
+        assert_eq!(region.get_block(1, 1, 1), Some(&BlockState::new("minecraft:air".to_string())));
 
-        assert_eq!(palette.len(), 3);
+        // Check the palette size
+        assert_eq!(region.palette.len(), 3); // air, stone, dirt
     }
 
     #[test]
@@ -452,11 +452,6 @@ mod tests {
         // Serialize to NBT
         let nbt = schematic.to_nbt();
 
-
-        let palette = nbt.get::<_, &NbtCompound>("Palette")
-            .map_err(|e| format!("Failed to get Palette: {}", e)).unwrap();
-
-
         // Write NBT to a buffer
         let mut buffer = Vec::new();
         write_nbt(&mut buffer, None, &nbt, quartz_nbt::io::Flavor::Uncompressed).unwrap();
@@ -470,7 +465,6 @@ mod tests {
         // Compare original and deserialized schematics
         assert_eq!(schematic.metadata, deserialized_schematic.metadata);
         assert_eq!(schematic.regions.len(), deserialized_schematic.regions.len());
-        assert_eq!(schematic.palette.len(), deserialized_schematic.palette.len());
 
         // Check if blocks are correctly deserialized
         assert_eq!(schematic.get_block(0, 0, 0), deserialized_schematic.get_block(0, 0, 0));
@@ -480,6 +474,11 @@ mod tests {
         let original_entities = schematic.get_region("Main").unwrap().entities.clone();
         let deserialized_entities = deserialized_schematic.get_region("Main").unwrap().entities.clone();
         assert_eq!(original_entities, deserialized_entities);
+
+        // Check if palettes are correctly deserialized (now checking the region's palette)
+        let original_palette = schematic.get_region("Main").unwrap().palette().clone();
+        let deserialized_palette = deserialized_schematic.get_region("Main").unwrap().palette().clone();
+        assert_eq!(original_palette, deserialized_palette);
     }
 
 }
