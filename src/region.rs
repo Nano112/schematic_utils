@@ -38,7 +38,7 @@ where
 
 impl Region {
     pub fn new(name: String, position: (i32, i32, i32), size: (i32, i32, i32)) -> Self {
-        let volume = (size.0 * size.1 * size.2) as usize;
+        let volume = (size.0.abs() * size.1.abs() * size.2.abs()) as usize;
         let mut palette = Vec::new();
         palette.push(BlockState::new("minecraft:air".to_string()));
 
@@ -52,7 +52,6 @@ impl Region {
             block_entities: HashMap::new(),
         }
     }
-
     pub fn resize(&mut self, new_size: (i32, i32, i32)) {
         let volume = (new_size.0 * new_size.1 * new_size.2) as usize;
         //resizing needs to move the blocks to the new position
@@ -69,9 +68,22 @@ impl Region {
     }
 
     pub fn is_in_region(&self, x: i32, y: i32, z: i32) -> bool {
-        x >= self.position.0 && x < self.position.0 + self.size.0 &&
-            y >= self.position.1 && y < self.position.1 + self.size.1 &&
+        let in_x = if self.size.0 < 0 {
+            x > self.position.0 + self.size.0 && x <= self.position.0
+        } else {
+            x >= self.position.0 && x < self.position.0 + self.size.0
+        };
+        let in_y = if self.size.1 < 0 {
+            y > self.position.1 + self.size.1 && y <= self.position.1
+        } else {
+            y >= self.position.1 && y < self.position.1 + self.size.1
+        };
+        let in_z = if self.size.2 < 0 {
+            z > self.position.2 + self.size.2 && z <= self.position.2
+        } else {
             z >= self.position.2 && z < self.position.2 + self.size.2
+        };
+        in_x && in_y && in_z
     }
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockState) -> bool {
@@ -86,10 +98,10 @@ impl Region {
     }
 
     fn coords_to_index(&self, x: i32, y: i32, z: i32) -> usize {
-        let rx = x - self.position.0;
-        let ry = y - self.position.1;
-        let rz = z - self.position.2;
-        (ry * self.size.0 * self.size.2 + rz * self.size.0 + rx) as usize
+        let rx = if self.size.0 < 0 { self.size.0.abs() - 1 - (x - self.position.0) } else { x - self.position.0 };
+        let ry = if self.size.1 < 0 { self.size.1.abs() - 1 - (y - self.position.1) } else { y - self.position.1 };
+        let rz = if self.size.2 < 0 { self.size.2.abs() - 1 - (z - self.position.2) } else { z - self.position.2 };
+        (ry * self.size.0.abs() * self.size.2.abs() + rz * self.size.0.abs() + rx) as usize
     }
 
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<&BlockState> {
@@ -122,7 +134,7 @@ impl Region {
     }
 
     pub fn volume(&self) -> usize {
-        (self.size.0 * self.size.1 * self.size.2) as usize
+        (self.size.0.abs() * self.size.1.abs() * self.size.2.abs()) as usize
     }
 
     const EXPAND_FACTOR: f64 = 1.5;
@@ -192,7 +204,7 @@ impl Region {
                 let block_id = (long >> (i * bits_per_block)) & mask;
                 self.blocks.push(block_id as usize);
 
-                if self.blocks.len() == self.size.0 as usize * self.size.1 as usize * self.size.2 as usize {
+                if self.blocks.len() == self.volume() {
                     return;
                 }
             }
@@ -205,9 +217,12 @@ impl Region {
         let min_y = self.position.1.min(other.position.1);
         let min_z = self.position.2.min(other.position.2);
 
-        let max_x = (self.position.0 + self.size.0 - 1).max(other.position.0 + other.size.0 - 1);
-        let max_y = (self.position.1 + self.size.1 - 1).max(other.position.1 + other.size.1 - 1);
-        let max_z = (self.position.2 + self.size.2 - 1).max(other.position.2 + other.size.2 - 1);
+        let max_x = (self.position.0 + self.size.0 - self.size.0.signum())
+            .max(other.position.0 + other.size.0 - other.size.0.signum());
+        let max_y = (self.position.1 + self.size.1 - self.size.1.signum())
+            .max(other.position.1 + other.size.1 - other.size.1.signum());
+        let max_z = (self.position.2 + self.size.2 - self.size.2.signum())
+            .max(other.position.2 + other.size.2 - other.size.2.signum());
 
         let new_size = (
             max_x - min_x + 1,
@@ -216,16 +231,21 @@ impl Region {
         );
 
         // Create a new block array to hold merged data
-        let mut new_blocks = vec![0; (new_size.0 * new_size.1 * new_size.2) as usize];
+        let mut new_blocks = vec![0; (new_size.0.abs() * new_size.1.abs() * new_size.2.abs()) as usize];
         let mut new_palette = self.palette.clone();
+
+        // Helper function to convert global coordinates to new block index
+        let global_to_new_index = |x: i32, y: i32, z: i32| {
+            let nx = if new_size.0 < 0 { new_size.0.abs() - 1 - (x - min_x) } else { x - min_x };
+            let ny = if new_size.1 < 0 { new_size.1.abs() - 1 - (y - min_y) } else { y - min_y };
+            let nz = if new_size.2 < 0 { new_size.2.abs() - 1 - (z - min_z) } else { z - min_z };
+            (ny * new_size.0.abs() * new_size.2.abs() + nz * new_size.0.abs() + nx) as usize
+        };
 
         // Copy existing blocks into the new array
         for (old_index, &block) in self.blocks.iter().enumerate() {
             let (old_x, old_y, old_z) = self.index_to_coords(old_index);
-            let new_x = old_x + self.position.0 - min_x;
-            let new_y = old_y + self.position.1 - min_y;
-            let new_z = old_z + self.position.2 - min_z;
-            let new_index = (new_y * new_size.0 * new_size.2 + new_z * new_size.0 + new_x) as usize;
+            let new_index = global_to_new_index(old_x, old_y, old_z);
             new_blocks[new_index] = block;
         }
 
@@ -235,10 +255,7 @@ impl Region {
                 continue;
             }
             let (old_x, old_y, old_z) = other.index_to_coords(old_index);
-            let new_x = old_x + other.position.0 - min_x;
-            let new_y = old_y + other.position.1 - min_y;
-            let new_z = old_z + other.position.2 - min_z;
-            let new_index = (new_y * new_size.0 * new_size.2 + new_z * new_size.0 + new_x) as usize;
+            let new_index = global_to_new_index(old_x, old_y, old_z);
 
             let block_state = &other.palette[block];
             let palette_index = if let Some(existing_index) = new_palette.iter().position(|b| b == block_state) {
@@ -267,7 +284,6 @@ impl Region {
         self.blocks = new_blocks;
         self.palette = new_palette;
     }
-
     pub fn add_entity(&mut self, entity: Entity) {
         self.entities.push(entity);
     }
@@ -289,13 +305,15 @@ impl Region {
     }
 
     pub fn get_bounding_box(&self) -> BoundingBox {
+        let min = self.position;
+        let max = (
+            self.position.0 + self.size.0 - self.size.0.signum(),
+            self.position.1 + self.size.1 - self.size.1.signum(),
+            self.position.2 + self.size.2 - self.size.2.signum(),
+        );
         BoundingBox::new(
-            self.position,
-            (
-                self.position.0 + self.size.0 - 1,
-                self.position.1 + self.size.1 - 1,
-                self.position.2 + self.size.2 - 1,
-            ),
+            (min.0.min(max.0), min.1.min(max.1), min.2.min(max.2)),
+            (min.0.max(max.0), min.1.max(max.1), min.2.max(max.2)),
         )
     }
 
@@ -475,10 +493,16 @@ impl Region {
     }
 
     pub fn index_to_coords(&self, index: usize) -> (i32, i32, i32) {
-        let x = (index % self.size.0 as usize) as i32;
-        let y = ((index / self.size.0 as usize) % self.size.1 as usize) as i32;
-        let z = (index / (self.size.0 * self.size.1) as usize) as i32;
-        (x, y, z)
+        let abs_size = (self.size.0.abs(), self.size.1.abs(), self.size.2.abs());
+        let x = (index % abs_size.0 as usize) as i32;
+        let y = ((index / abs_size.0 as usize) % abs_size.1 as usize) as i32;
+        let z = (index / (abs_size.0 * abs_size.1) as usize) as i32;
+
+        let rx = if self.size.0 < 0 { self.position.0 + self.size.0 + 1 + x } else { self.position.0 + x };
+        let ry = if self.size.1 < 0 { self.position.1 + self.size.1 + 1 + y } else { self.position.1 + y };
+        let rz = if self.size.2 < 0 { self.position.2 + self.size.2 + 1 + z } else { self.position.2 + z };
+
+        (rx, ry, rz)
     }
 
     pub fn count_blocks(&self) -> usize {
