@@ -78,11 +78,11 @@ impl UniversalSchematic {
         Ok(combined_json)
     }
 
-    fn total_blocks(&self) -> i32 {
+    pub(crate) fn total_blocks(&self) -> i32 {
         self.regions.values().map(|r| r.count_blocks() as i32).sum()
     }
 
-    fn total_volume(&self) -> i32 {
+    pub(crate) fn total_volume(&self) -> i32 {
         self.regions.values().map(|r| r.volume() as i32).sum()
     }
 
@@ -216,6 +216,9 @@ impl UniversalSchematic {
 
 
     pub fn get_bounding_box(&self) -> BoundingBox {
+        if self.regions.is_empty() {
+            return BoundingBox::new((0, 0, 0), (0, 0, 0));
+        }
         let mut bounding_box = BoundingBox::new((i32::MAX, i32::MAX, i32::MAX), (i32::MIN, i32::MIN, i32::MIN));
 
         for region in self.regions.values() {

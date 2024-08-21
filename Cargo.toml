@@ -15,10 +15,12 @@ quartz_nbt = "0.2.9"
 serde-wasm-bindgen = "0.4"
 flate2 = "1.0.32"
 log = "0.4.22"
+rand = "0.9.0-alpha.2"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 criterion = "0.5.1"
+num-complex = "0.4"
 
 [[bench]]
 name = "schematic_bench"

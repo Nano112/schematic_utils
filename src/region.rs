@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde::ser::SerializeMap;
 use crate::{BlockEntity, BlockState, BoundingBox, Entity};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Region {
     pub name: String,
     pub position: (i32, i32, i32),
@@ -177,6 +177,26 @@ impl Region {
         self.position = (min_x, min_y, min_z);
         self.size = new_size;
         self.blocks = new_blocks;
+    }
+
+
+    pub(crate) fn unpack_block_states(&mut self, packed_states: &[i64]) {
+        let bits_per_block = (self.palette.len() as f64).log2().ceil() as usize;
+        let blocks_per_long = 64 / bits_per_block;
+        let mask = (1 << bits_per_block) - 1;
+
+        self.blocks.clear();
+
+        for &long in packed_states {
+            for i in 0..blocks_per_long {
+                let block_id = (long >> (i * bits_per_block)) & mask;
+                self.blocks.push(block_id as usize);
+
+                if self.blocks.len() == self.size.0 as usize * self.size.1 as usize * self.size.2 as usize {
+                    return;
+                }
+            }
+        }
     }
 
     pub fn merge(&mut self, other: &Region) {
@@ -414,31 +434,31 @@ impl Region {
         region_nbt
     }
 
-    fn create_packed_block_states(&self) -> Vec<i64> {
-        let bits_per_block = self.calculate_bits_per_block();
+    pub(crate) fn create_packed_block_states(&self) -> Vec<i64> {
+        let bits_per_block = (self.palette.len() as f64).log2().ceil() as usize;
         let blocks_per_long = 64 / bits_per_block;
-        let mask = (1i64 << bits_per_block) - 1;
+        let mask = (1 << bits_per_block) - 1;
 
-        let mut block_states = Vec::new();
+        let mut packed_states = Vec::new();
         let mut current_long = 0i64;
         let mut blocks_in_current_long = 0;
 
-        for &block_index in &self.blocks {
-            current_long |= (block_index as i64 & mask) << (blocks_in_current_long * bits_per_block);
+        for block_id in &self.blocks {
+            current_long |= (*block_id as i64 & mask) << (blocks_in_current_long * bits_per_block);
             blocks_in_current_long += 1;
 
             if blocks_in_current_long == blocks_per_long {
-                block_states.push(current_long);
+                packed_states.push(current_long);
                 current_long = 0;
                 blocks_in_current_long = 0;
             }
         }
 
         if blocks_in_current_long > 0 {
-            block_states.push(current_long);
+            packed_states.push(current_long);
         }
 
-        block_states
+        packed_states
     }
 
     pub(crate) fn palette(&self) -> NbtList {
