@@ -126,6 +126,15 @@ impl UniversalSchematic {
         self.regions.get_mut(name)
     }
 
+    pub fn get_merged_region(&self) -> Region {
+        let mut merged_region = self.regions.values().next().unwrap().clone();
+
+        for region in self.regions.values().skip(1) {
+            merged_region.merge(region);
+        }
+
+        merged_region
+    }
 
     pub fn add_block_entity_in_region(&mut self, region_name: &str, block_entity: BlockEntity) -> bool {
         let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
@@ -229,13 +238,13 @@ impl UniversalSchematic {
         bounding_box
     }
 
-    // pub fn to_schematic(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    //     crate::formats::schematic::to_schematic(self)
-    // }
-    //
-    // pub fn from_schematic(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-    //     crate::formats::schematic::from_schematic(data)
-    // }
+    pub fn to_schematic(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        crate::formats::schematic::to_schematic(self)
+    }
+
+    pub fn from_schematic(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+        crate::formats::schematic::from_schematic(data)
+    }
 
 }
 

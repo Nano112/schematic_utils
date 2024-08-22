@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,23 @@ use serde::{Deserialize, Serialize};
 pub struct BlockState {
     pub name: String,
     pub properties: HashMap<String, String>,
+}
+
+impl fmt::Display for BlockState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.properties.is_empty() {
+            write!(f, "[")?;
+            for (i, (key, value)) in self.properties.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ",")?;
+                }
+                write!(f, "{}={}", key, value)?;
+            }
+            write!(f, "]")?;
+        }
+        Ok(())
+    }
 }
 
 impl Hash for BlockState {

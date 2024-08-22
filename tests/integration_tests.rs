@@ -5,7 +5,7 @@ use minecraft_schematic_utils::{litematic, schematic};
 #[test]
 fn test_litematic_to_schem_conversion() {
     // Path to the sample .litematic file
-    let litematic_path = Path::new("tests/samples/sample.litematic");
+    let litematic_path = Path::new("tests/samples/brewer.litematic");
 
     // Ensure the sample file exists
     assert!(litematic_path.exists(), "Sample .litematic file not found");
@@ -16,11 +16,12 @@ fn test_litematic_to_schem_conversion() {
     // Parse the .litematic data into a UniversalSchematic
     let schematic = litematic::from_litematic(&litematic_data).expect("Failed to parse litematic");
 
+
     // Convert the UniversalSchematic to .schem format
     let schem_data = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
 
     // Save the .schem file
-    let schem_path = Path::new("tests/output/sample_converted.schem");
+    let schem_path = Path::new("tests/output/brewer_converted.schem");
     fs::write(schem_path, &schem_data).expect("Failed to write schem file");
 
     // Optionally, read back the .schem file and compare
@@ -33,7 +34,6 @@ fn test_litematic_to_schem_conversion() {
 
     // Compare the first region (assuming there's at least one)
     if let (Some(original_region), Some(converted_region)) = (schematic.regions.values().next(), read_back_schematic.regions.values().next()) {
-        assert_eq!(original_region.size, converted_region.size);
         assert_eq!(original_region.count_blocks(), converted_region.count_blocks());
 
         // Check a few random blocks

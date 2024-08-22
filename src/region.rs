@@ -10,7 +10,7 @@ pub struct Region {
     pub position: (i32, i32, i32),
     pub size: (i32, i32, i32),
     #[serde(skip)]
-    blocks: Vec<usize>,
+    pub(crate) blocks: Vec<usize>,
     #[serde(skip)]
     pub(crate) palette: Vec<BlockState>,
     pub entities: Vec<Entity>,
@@ -68,21 +68,24 @@ impl Region {
     }
 
     pub fn is_in_region(&self, x: i32, y: i32, z: i32) -> bool {
-        let in_x = if self.size.0 < 0 {
-            x > self.position.0 + self.size.0 && x <= self.position.0
-        } else {
+        let in_x = if self.size.0 >= 0 {
             x >= self.position.0 && x < self.position.0 + self.size.0
-        };
-        let in_y = if self.size.1 < 0 {
-            y > self.position.1 + self.size.1 && y <= self.position.1
         } else {
+            x > self.position.0 + self.size.0 && x <= self.position.0
+        };
+
+        let in_y = if self.size.1 >= 0 {
             y >= self.position.1 && y < self.position.1 + self.size.1
-        };
-        let in_z = if self.size.2 < 0 {
-            z > self.position.2 + self.size.2 && z <= self.position.2
         } else {
-            z >= self.position.2 && z < self.position.2 + self.size.2
+            y > self.position.1 + self.size.1 && y <= self.position.1
         };
+
+        let in_z = if self.size.2 >= 0 {
+            z >= self.position.2 && z < self.position.2 + self.size.2
+        } else {
+            z > self.position.2 + self.size.2 && z <= self.position.2
+        };
+
         in_x && in_y && in_z
     }
 
@@ -110,7 +113,19 @@ impl Region {
         }
 
         let index = self.coords_to_index(x, y, z);
-        self.blocks.get(index).and_then(|&palette_index| self.palette.get(palette_index))
+        let block_index = self.blocks[index];
+        let palette_index = self.palette.get(block_index);
+        palette_index
+    }
+
+    pub fn get_block_index(&self, x: i32, y: i32, z: i32) -> Option<usize> {
+        if !self.is_in_region(x, y, z) {
+            return None;
+        }
+
+        let index = self.coords_to_index(x, y, z);
+        let block_index = self.blocks[index];
+        Some(block_index)
     }
 
     fn get_or_insert_in_palette(&mut self, block: BlockState) -> usize {
@@ -122,16 +137,7 @@ impl Region {
         }
     }
 
-    fn get_block_index(&self, x: i32, y: i32, z: i32) -> Option<usize> {
-        if x < self.position.0 || x >= self.position.0 + self.size.0 ||
-            y < self.position.1 || y >= self.position.1 + self.size.1 ||
-            z < self.position.2 || z >= self.position.2 + self.size.2 {
-            None
-        } else {
-            let index = (y - self.position.1) * self.size.0 * self.size.2 + (z - self.position.2) * self.size.0 + (x - self.position.0);
-            Some(index as usize)
-        }
-    }
+
 
     pub fn volume(&self) -> usize {
         (self.size.0.abs() * self.size.1.abs() * self.size.2.abs()) as usize
@@ -212,77 +218,76 @@ impl Region {
     }
 
     pub fn merge(&mut self, other: &Region) {
-        // Calculate the new bounds after merging
-        let min_x = self.position.0.min(other.position.0);
-        let min_y = self.position.1.min(other.position.1);
-        let min_z = self.position.2.min(other.position.2);
+        let bounding_box = self.get_bounding_box().union(&other.get_bounding_box());
+        let other_bounding_box = other.get_bounding_box();
 
-        let max_x = (self.position.0 + self.size.0 - self.size.0.signum())
-            .max(other.position.0 + other.size.0 - other.size.0.signum());
-        let max_y = (self.position.1 + self.size.1 - self.size.1.signum())
-            .max(other.position.1 + other.size.1 - other.size.1.signum());
-        let max_z = (self.position.2 + self.size.2 - self.size.2.signum())
-            .max(other.position.2 + other.size.2 - other.size.2.signum());
+        let combined_bounding_box = bounding_box.union(&other_bounding_box);
+        let new_size = combined_bounding_box.get_dimensions();
+        let new_position = combined_bounding_box.min;
 
-        let new_size = (
-            max_x - min_x + 1,
-            max_y - min_y + 1,
-            max_z - min_z + 1,
-        );
-
-        // Create a new block array to hold merged data
-        let mut new_blocks = vec![0; (new_size.0.abs() * new_size.1.abs() * new_size.2.abs()) as usize];
+        let mut new_blocks = vec![0; (combined_bounding_box.volume()) as usize];
         let mut new_palette = self.palette.clone();
-
-        // Helper function to convert global coordinates to new block index
-        let global_to_new_index = |x: i32, y: i32, z: i32| {
-            let nx = if new_size.0 < 0 { new_size.0.abs() - 1 - (x - min_x) } else { x - min_x };
-            let ny = if new_size.1 < 0 { new_size.1.abs() - 1 - (y - min_y) } else { y - min_y };
-            let nz = if new_size.2 < 0 { new_size.2.abs() - 1 - (z - min_z) } else { z - min_z };
-            (ny * new_size.0.abs() * new_size.2.abs() + nz * new_size.0.abs() + nx) as usize
-        };
-
-        // Copy existing blocks into the new array
-        for (old_index, &block) in self.blocks.iter().enumerate() {
-            let (old_x, old_y, old_z) = self.index_to_coords(old_index);
-            let new_index = global_to_new_index(old_x, old_y, old_z);
-            new_blocks[new_index] = block;
+        let mut reverse_new_palette: HashMap<BlockState, usize> = HashMap::new();
+        for (index, block) in self.palette.iter().enumerate() {
+            reverse_new_palette.insert(block.clone(), index);
         }
-
-        // Copy blocks from the other region into the new array
-        for (old_index, &block) in other.blocks.iter().enumerate() {
-            if block == 0 {
-                continue;
-            }
-            let (old_x, old_y, old_z) = other.index_to_coords(old_index);
-            let new_index = global_to_new_index(old_x, old_y, old_z);
-
-            let block_state = &other.palette[block];
-            let palette_index = if let Some(existing_index) = new_palette.iter().position(|b| b == block_state) {
-                existing_index
+        for index in 0..self.blocks.len() {
+            let (x, y, z) = self.index_to_coords(index);
+            let new_index = ((y - new_position.1) * new_size.0 * new_size.2 + (z - new_position.2) * new_size.0 + (x - new_position.0)) as usize;
+            let block_index = self.blocks[index];
+            let block = &self.palette[block_index];
+            if let Some(palette_index) = reverse_new_palette.get(block) {
+                new_blocks[new_index] = *palette_index;
             } else {
-                new_palette.push(block_state.clone());
-                new_palette.len() - 1
-            };
-
-            new_blocks[new_index] = palette_index;
+                new_blocks[new_index] = new_palette.len();
+                new_palette.push(block.clone());
+                reverse_new_palette.insert(block.clone(), new_palette.len() - 1);
+            }
         }
 
-        // Merge block entities
-        for (&position, block_entity) in &other.block_entities {
-            let new_position = (
-                position.0 + other.position.0 - min_x,
-                position.1 + other.position.1 - min_y,
-                position.2 + other.position.2 - min_z,
-            );
-            self.block_entities.insert(new_position, block_entity.clone());
+        for index in 0..other.blocks.len() {
+            let (x, y, z) = other.index_to_coords(index);
+            let new_index = ((y - new_position.1) * new_size.0 * new_size.2 + (z - new_position.2) * new_size.0 + (x - new_position.0)) as usize;
+            let block_palette_index = other.blocks[index];
+            let block = &other.palette[block_palette_index];
+            if let Some(palette_index) = reverse_new_palette.get(block) {
+                if block.name == "minecraft:air" {
+                    continue;
+                }
+                new_blocks[new_index] = *palette_index;
+            } else {
+                new_palette.push(block.clone());
+                reverse_new_palette.insert(block.clone(), new_palette.len() - 1);
+                if block.name == "minecraft:air" {
+                    continue;
+                }
+                new_blocks[new_index] = new_palette.len() - 1;
+
+            }
         }
 
-        // Update region with new values
-        self.position = (min_x, min_y, min_z);
+        // Update region properties
+        self.position = new_position;
         self.size = new_size;
         self.blocks = new_blocks;
         self.palette = new_palette;
+
+
+        // Merge entities and block entities
+        self.merge_entities(other);
+        self.merge_block_entities(other);
+    }
+
+    fn calculate_new_index(&self, x: i32, y: i32, z: i32, new_position: &(i32, i32, i32), new_size: &(i32, i32, i32)) -> usize {
+        ((y - new_position.1) * new_size.0 * new_size.2 + (z - new_position.2) * new_size.0 + (x - new_position.0)) as usize
+    }
+
+    fn merge_entities(&mut self, other: &Region) {
+        self.entities.extend(other.entities.iter().cloned());
+    }
+
+    fn merge_block_entities(&mut self, other: &Region) {
+        self.block_entities.extend(other.block_entities.iter().map(|(&pos, be)| (pos, be.clone())));
     }
     pub fn add_entity(&mut self, entity: Entity) {
         self.entities.push(entity);
@@ -305,16 +310,24 @@ impl Region {
     }
 
     pub fn get_bounding_box(&self) -> BoundingBox {
-        let min = self.position;
-        let max = (
+        let end = (
             self.position.0 + self.size.0 - self.size.0.signum(),
             self.position.1 + self.size.1 - self.size.1.signum(),
-            self.position.2 + self.size.2 - self.size.2.signum(),
+            self.position.2 + self.size.2 - self.size.2.signum()
         );
-        BoundingBox::new(
-            (min.0.min(max.0), min.1.min(max.1), min.2.min(max.2)),
-            (min.0.max(max.0), min.1.max(max.1), min.2.max(max.2)),
-        )
+
+        BoundingBox {
+            min: (
+                self.position.0.min(end.0),
+                self.position.1.min(end.1),
+                self.position.2.min(end.2)
+            ),
+            max: (
+                self.position.0.max(end.0),
+                self.position.1.max(end.1),
+                self.position.2.max(end.2)
+            )
+        }
     }
 
     pub fn to_nbt(&self) -> NbtTag {
@@ -901,6 +914,40 @@ mod tests {
                 }
             }
         }
+    }
+
+
+    #[test]
+    fn test_bounding_box() {
+        let region = Region::new("Test".to_string(), (1, 0, 1), (-2, 2, -2));
+        let bounding_box = region.get_bounding_box();
+
+        assert_eq!(bounding_box.min, (0, 0, 0));
+        assert_eq!(bounding_box.max, (1, 1, 1));
+
+        let region = Region::new("Test".to_string(), (1, 0, 1), (-3, 3, -3));
+        let bounding_box = region.get_bounding_box();
+
+        assert_eq!(bounding_box.min, (-1, 0, -1));
+        assert_eq!(bounding_box.max, (1, 2, 1));
+    }
+
+    #[test]
+    fn test_merge_negative_size() {
+        let mut region1 = Region::new("Test1".to_string(), (0, 0, 0), (-2, -2, -2));
+        let mut region2 = Region::new("Test2".to_string(), (-2, -2, -2), (-2, -2, -2));
+        let stone = BlockState::new("minecraft:stone".to_string());
+
+        region1.set_block(0, 0, 0, stone.clone());
+        region2.set_block(-2, -2, -2, stone.clone());
+
+        region1.merge(&region2);
+
+        assert_eq!(region1.size, (4, 4, 4));
+        assert_eq!(region1.get_bounding_box().min, (-3, -3, -3));
+        assert_eq!(region1.get_bounding_box().max, (0, 0, 0));
+        assert_eq!(region1.get_block(0, 0, 0), Some(&stone));
+        assert_eq!(region1.get_block(-2, -2, -2), Some(&stone));
     }
 
 }

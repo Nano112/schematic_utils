@@ -4,7 +4,6 @@ use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use std::io::Read;
-use std::collections::HashMap;
 
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
@@ -17,34 +16,32 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    // Add width, height, length
-    root.insert("Width", NbtTag::Short(width as i16));
-    root.insert("Height", NbtTag::Short(height as i16));
-    root.insert("Length", NbtTag::Short(length as i16));
+    // Add width, height, length (use absolute values)
+    root.insert("Width", NbtTag::Short((width as i16).abs() ));
+    root.insert("Height", NbtTag::Short((height as i16).abs()));
+    root.insert("Length", NbtTag::Short((length as i16).abs()));
+
+    // Add size information to preserve negative dimensions
+    root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
+
 
     // Add Offset (default [0, 0, 0])
     let offset = vec![0, 0, 0];
     root.insert("Offset", NbtTag::IntArray(offset));
 
-    // Convert and add the Palette and PaletteMax
-    let mut palette = NbtCompound::new();  // Corrected: Using NbtCompound directly
-    let mut max_palette_index = 0;
-    for region in schematic.regions.values() {
-        let (region_palette, region_max_index) = convert_palette(&region.palette);
-        max_palette_index = max_palette_index.max(region_max_index);
-        for (key, value) in region_palette.inner() {
-            palette.insert(key.clone(), value.clone());
-        }
-    }
-    root.insert("Palette", NbtTag::Compound(palette));  // Corrected: Now using the correct NbtCompound
-    root.insert("PaletteMax", NbtTag::Int(max_palette_index + 1));
 
-    // Convert and add BlockData
+    let merged_region = schematic.get_merged_region();
+
+    root.insert("Palette", convert_palette(&merged_region.palette).0);
+    root.insert("PaletteMax", convert_palette(&merged_region.palette).1);
+
+    // Encode BlockData as varint
     let mut block_data = Vec::new();
-    for region in schematic.regions.values() {
-        block_data.extend(convert_block_data(region, &bounding_box));
+    for &block_id in &merged_region.blocks {
+        block_data.extend(encode_varint(block_id as i32));
     }
-    root.insert("BlockData", NbtTag::ByteArray(block_data));
+    // Convert u8 to i8 before inserting into NBT
+    root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
     // Convert and add BlockEntities
     let mut block_entities = NbtList::new();
@@ -147,42 +144,6 @@ fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
     (nbt_palette, max_id as i32)
 }
 
-fn convert_block_data(region: &Region, bounding_box: &BoundingBox) -> Vec<i8> {
-    let mut block_data = Vec::new();
-    let (width, height, length) = bounding_box.get_dimensions();
-
-    for y in 0..height {
-        for z in 0..length {
-            for x in 0..width {
-                let global_x = bounding_box.min.0 + x as i32;
-                let global_y = bounding_box.min.1 + y as i32;
-                let global_z = bounding_box.min.2 + z as i32;
-
-                if let Some(block) = region.get_block(global_x, global_y, global_z) {
-                    let id = region.get_palette_index(block).unwrap_or(0) as i32;
-                    // Convert id to VarInt
-                    let mut varint = id as u32;
-                    loop {
-                        let mut byte = (varint & 0x7F) as u8;
-                        varint >>= 7;
-                        if varint != 0 {
-                            byte |= 0x80;
-                        }
-                        block_data.push(byte as i8);
-                        if varint == 0 {
-                            break;
-                        }
-                    }
-                } else {
-                    // If no block is found, use air (id 0)
-                    block_data.push(0);
-                }
-            }
-        }
-    }
-
-    block_data
-}
 
 fn convert_block_entities(region: &Region) -> NbtList {
     let mut block_entities = NbtList::new();
@@ -222,27 +183,53 @@ fn parse_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn st
     Ok(palette)
 }
 
+fn encode_varint(value: i32) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut val = value as u32;
+    loop {
+        let mut byte = (val & 0b0111_1111) as u8;
+        val >>= 7;
+        if val != 0 {
+            byte |= 0b1000_0000;
+        }
+        bytes.push(byte);
+        if val == 0 {
+            break;
+        }
+    }
+    bytes
+}
+
+fn decode_varint<R: Read>(reader: &mut R) -> Result<i32, Box<dyn std::error::Error>> {
+    let mut result = 0;
+    let mut shift = 0;
+    loop {
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        result |= ((byte[0] & 0b0111_1111) as i32) << shift;
+        if byte[0] & 0b1000_0000 == 0 {
+            break;
+        }
+        shift += 7;
+        if shift >= 32 {
+            return Err("Varint is too long".into());
+        }
+    }
+    Ok(result)
+}
+
 fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
     let block_data_raw = region_tag.get::<_, &[i8]>("BlockData")?;
+
+    // Convert i8 slice to u8 slice
+    let block_data_u8: Vec<u8> = block_data_raw.iter().map(|&x| x as u8).collect();
+    let mut reader = std::io::Cursor::new(block_data_u8);
+
     let mut block_data = Vec::new();
-    let mut index = 0;
 
-    while index < block_data_raw.len() {
-        let mut value = 0;
-        let mut size = 0;
-
-        loop {
-            let byte = block_data_raw[index] as u32;
-            value |= (byte & 0x7F) << (size * 7);
-            size += 1;
-            index += 1;
-
-            if byte & 0x80 == 0 {
-                break;
-            }
-        }
-
-        block_data.push(value as i32);
+    for _ in 0..(width * height * length) {
+        let value = decode_varint(&mut reader)?;
+        block_data.push(value);
     }
 
     if block_data.len() != (width * height * length) as usize {

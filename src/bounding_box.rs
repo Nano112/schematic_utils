@@ -38,11 +38,11 @@ impl BoundingBox {
         }
     }
 
-    pub fn get_dimensions(&self) -> (u32, u32, u32) {
+    pub fn get_dimensions(&self) -> (i32, i32, i32) {
         (
-            (self.max.0 - self.min.0 + 1) as u32,
-            (self.max.1 - self.min.1 + 1) as u32,
-            (self.max.2 - self.min.2 + 1) as u32,
+            (self.max.0 - self.min.0 + 1),
+            (self.max.1 - self.min.1 + 1),
+            (self.max.2 - self.min.2 + 1),
         )
     }
 
