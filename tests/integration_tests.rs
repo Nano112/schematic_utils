@@ -1,28 +1,47 @@
 use std::fs;
 use std::path::Path;
-use minecraft_schematic_utils::{litematic, schematic};
+use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, print_schematic, schematic};
 
 #[test]
 fn test_litematic_to_schem_conversion() {
+
+    let name = "sample";
+
     // Path to the sample .litematic file
-    let litematic_path = Path::new("tests/samples/brewer.litematic");
+    let input_path_str = format!("tests/samples/{}.litematic", name);
+    let litematic_path = Path::new(&input_path_str);
 
     // Ensure the sample file exists
     assert!(litematic_path.exists(), "Sample .litematic file not found");
 
     // Read the .litematic file
-    let litematic_data = fs::read(litematic_path).expect("Failed to read sample.litematic");
+    let litematic_data = fs::read(litematic_path).expect(format!("Failed to read {}", input_path_str).as_str());
 
     // Parse the .litematic data into a UniversalSchematic
-    let schematic = litematic::from_litematic(&litematic_data).expect("Failed to parse litematic");
+    let mut schematic = litematic::from_litematic(&litematic_data).expect("Failed to parse litematic");
 
-
+    //place a diamond block at the center of the schematic
+    schematic.set_block(6,6,6, BlockState::new("minecraft:diamond_block".to_string()));
+    //print the schematic
+    print_schematic(&schematic);
     // Convert the UniversalSchematic to .schem format
     let schem_data = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
 
+
     // Save the .schem file
-    let schem_path = Path::new("tests/output/brewer_converted.schem");
+    let output_schem_path = format!("tests/output/{}.schem", name);
+    let schem_path = Path::new(&output_schem_path);
     fs::write(schem_path, &schem_data).expect("Failed to write schem file");
+
+    // Convert the UniversalSchematic back to .litematic format
+    let litematic_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
+
+    // Save the .litematic file
+    let output_litematic_path = format!("tests/output/{}.litematic", name);
+    let litematic_path = Path::new(&output_litematic_path);
+    fs::write(litematic_path, &litematic_data).expect("Failed to write litematic file");
+
+
 
     // Optionally, read back the .schem file and compare
     let read_back_data = fs::read(schem_path).expect("Failed to read back schem file");
@@ -54,4 +73,35 @@ fn test_litematic_to_schem_conversion() {
     fs::remove_file(schem_path).expect("Failed to remove converted schem file");
 
     println!("Successfully converted sample.litematic to .schem format and verified the contents.");
+}
+
+
+#[test]
+fn test_schema_to_litematic_conversion() {
+    let name = "sample";
+
+    // Path to the sample .schem file
+    let input_path_str = format!("tests/samples/{}.schem", name);
+    let schem_path = Path::new(&input_path_str);
+
+    // Ensure the sample file exists
+    assert!(schem_path.exists(), "Sample .schem file not found");
+
+    // Read the .schem file
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+
+    // Parse the .schem data into a UniversalSchematic
+    let schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+
+    print_schematic(&schematic);
+
+
+    // Convert the UniversalSchematic to .litematic format
+    let litematic_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
+
+
+    // Save the .litematic file
+    let output_litematic_path = format!("tests/output/{}.litematic", name);
+    let litematic_path = Path::new(&output_litematic_path);
+    fs::write(litematic_path, &litematic_data).expect("Failed to write litematic file");
 }

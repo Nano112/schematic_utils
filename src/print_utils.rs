@@ -21,27 +21,25 @@ pub fn print_schematic(schematic: &UniversalSchematic) {
 }
 
 #[allow(dead_code)]
+pub fn print_palette(palette: &Vec<BlockState>) {
+    println!("Palette:");
+    for (i, block) in palette.iter().enumerate() {
+        println!("  {}: {}", i, block.name);
+    }
+}
+
+#[allow(dead_code)]
 pub fn print_region(name: &str, region: &Region, schematic: &UniversalSchematic) {
     println!("  Region: {}", name);
 
     println!("    Position: {:?}", region.position);
     println!("    Size: {:?}", region.size);
     println!("    Blocks:");
-    for y in 0..region.size.1 {
-        for z in 0..region.size.2 {
-            for x in 0..region.size.0 {
-                let global_x = x + region.position.0;
-                let global_y = y + region.position.1;
-                let global_z = z + region.position.2;
-                if let Some(block) = schematic.get_block_from_region(name, global_x, global_y, global_z) {
-                    print!(" {:10}", block.name.split(':').last().unwrap_or("unknown"));
-                } else {
-                    print!(" {:10}", "?");
-                }
-            }
-            println!();
-        }
-        println!();
+    for i in 0..region.blocks.len() {
+        let block_palette_index = region.blocks[i];
+        let block_position = region.index_to_coords(i);
+        let block_state = region.palette.get(block_palette_index as usize).unwrap();
+        println!("      {} @ {:?}: {:?}", block_palette_index, block_position, block_state);
     }
 }
 #[allow(dead_code)]

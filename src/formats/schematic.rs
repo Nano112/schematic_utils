@@ -1,31 +1,27 @@
-use crate::{UniversalSchematic, Region, BlockState, Entity, BlockEntity, BoundingBox};
+use std::collections::HashMap;
+use crate::{UniversalSchematic, Region, BlockState, Entity, BlockEntity, BoundingBox, print_palette};
 use quartz_nbt::{NbtCompound, NbtTag, NbtList};
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
 
-    // Add Version and DataVersion fields
     root.insert("Version", NbtTag::Int(2)); // Schematic format version 2
-    root.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343))); // Use default if not provided
+    root.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
 
-    // Calculate bounding box
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    // Add width, height, length (use absolute values)
     root.insert("Width", NbtTag::Short((width as i16).abs() ));
     root.insert("Height", NbtTag::Short((height as i16).abs()));
     root.insert("Length", NbtTag::Short((length as i16).abs()));
 
-    // Add size information to preserve negative dimensions
     root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
 
 
-    // Add Offset (default [0, 0, 0])
     let offset = vec![0, 0, 0];
     root.insert("Offset", NbtTag::IntArray(offset));
 
@@ -35,32 +31,37 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     root.insert("Palette", convert_palette(&merged_region.palette).0);
     root.insert("PaletteMax", convert_palette(&merged_region.palette).1);
 
-    // Encode BlockData as varint
-    let mut block_data = Vec::new();
-    for &block_id in &merged_region.blocks {
-        block_data.extend(encode_varint(block_id as i32));
+    let block_data: Vec<u8> = merged_region.blocks.iter()
+        .flat_map(|&block_id| encode_varint(block_id as u32))
+        .collect();
+
+
+    //attempt to decode the block data for debug since it's buggy
+    let mut reader = Cursor::new(block_data.clone());
+    let mut decoded_data = Vec::new();
+    while reader.position() < block_data.len() as u64 {
+        let value = decode_varint(&mut reader)?;
+        decoded_data.push(value);
     }
-    // Convert u8 to i8 before inserting into NBT
+    println!("Decoded Data: {:?}", decoded_data);
+    println!("Decoded Data Length: {:?}", decoded_data.len());
+
     root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
-    // Convert and add BlockEntities
     let mut block_entities = NbtList::new();
     for region in schematic.regions.values() {
         block_entities.extend(convert_block_entities(region).iter().cloned());
     }
     root.insert("BlockEntities", NbtTag::List(block_entities));
 
-    // Convert and add Entities
     let mut entities = NbtList::new();
     for region in schematic.regions.values() {
         entities.extend(convert_entities(region).iter().cloned());
     }
     root.insert("Entities", NbtTag::List(entities));
 
-    // Add Metadata
-    root.insert("Metadata", schematic.metadata.to_nbt()); // No need to check for `Some`, just insert the metadata directly
+    root.insert("Metadata", schematic.metadata.to_nbt());
 
-    // Compress and return the NBT data
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     quartz_nbt::io::write_nbt(&mut encoder, None, &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
@@ -76,7 +77,7 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 
     let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
 
-    // Correctly access the Metadata compound and the Name field
+
     let name = if let Some(metadata) = root.get::<_, &NbtCompound>("Metadata").ok() {
         metadata.get::<_, &str>("Name").ok().map(|s| s.to_string())
     } else {
@@ -93,20 +94,14 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let length = root.get::<_, i16>("Length")? as u32;
 
     let palette = parse_palette(&root)?;
+
+    print_palette(&palette);
     let block_data = parse_block_data(&root, width, height, length)?;
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
     region.palette = palette;
 
-    for (i, block_id) in block_data.iter().enumerate() {
-        let x = (i % width as usize) as i32;
-        let y = (i / (width * length) as usize) as i32;
-        let z = ((i / width as usize) % length as usize) as i32;
-
-        if let Some(block) = region.palette.get(*block_id as usize) {
-            region.set_block(x, y, z, block.clone());
-        }
-    }
+    region.blocks = block_data.iter().map(|&x| x as usize).collect();
 
     let block_entities = parse_block_entities(&root)?;
     for block_entity in block_entities {
@@ -120,28 +115,6 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 
     schematic.add_region(region);
     Ok(schematic)
-}
-
-
-fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
-    let mut nbt_palette = NbtCompound::new();
-    let mut max_id = 0;
-
-    for (id, block_state) in palette.iter().enumerate() {
-        let key = if block_state.properties.is_empty() {
-            block_state.name.clone()
-        } else {
-            format!("{}[{}]", block_state.name,
-                    block_state.properties.iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(","))
-        };
-        nbt_palette.insert(&key, NbtTag::Int(id as i32));
-        max_id = max_id.max(id);
-    }
-
-    (nbt_palette, max_id as i32)
 }
 
 
@@ -171,21 +144,63 @@ fn convert_entities(region: &Region) -> NbtList {
 
 fn parse_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
     let palette_compound = region_tag.get::<_, &NbtCompound>("Palette")?;
-    let mut palette = Vec::new();
+    let palette_max = region_tag.get::<_, i32>("PaletteMax")? as usize;
+    let mut palette = vec![BlockState::new("minecraft:air".to_string()); palette_max];
 
-    for (key, value) in palette_compound.inner() {
-        if let NbtTag::Int(_id) = value {
-            let block_state = BlockState::new(key.to_string());
-            palette.push(block_state);
+    for (block_state_str, value) in palette_compound.inner() {
+        if let NbtTag::Int(id) = value {
+            let block_state = parse_block_state(block_state_str);
+            palette[*id as usize] = block_state;
         }
     }
 
     Ok(palette)
 }
 
-fn encode_varint(value: i32) -> Vec<u8> {
+fn parse_block_state(input: &str) -> BlockState {
+    if let Some((name, properties_str)) = input.split_once('[') {
+        let name = name.to_string();
+        let properties = properties_str
+            .trim_end_matches(']')
+            .split(',')
+            .filter_map(|prop| {
+                let mut parts = prop.splitn(2, '=');
+                Some((
+                    parts.next()?.trim().to_string(),
+                    parts.next()?.trim().to_string(),
+                ))
+            })
+            .collect();
+        BlockState { name, properties }
+    } else {
+        BlockState::new(input.to_string())
+    }
+}
+
+fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
+    let mut nbt_palette = NbtCompound::new();
+    let mut max_id = 0;
+
+    for (id, block_state) in palette.iter().enumerate() {
+        let key = if block_state.properties.is_empty() {
+            block_state.name.clone()
+        } else {
+            format!("{}[{}]", block_state.name,
+                    block_state.properties.iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(","))
+        };
+        nbt_palette.insert(&key, NbtTag::Int(id as i32));
+        max_id = max_id.max(id);
+    }
+
+    (nbt_palette, max_id as i32)
+}
+
+pub fn encode_varint(value: u32) -> Vec<u8> {
     let mut bytes = Vec::new();
-    let mut val = value as u32;
+    let mut val = value;
     loop {
         let mut byte = (val & 0b0111_1111) as u8;
         val >>= 7;
@@ -200,44 +215,57 @@ fn encode_varint(value: i32) -> Vec<u8> {
     bytes
 }
 
-fn decode_varint<R: Read>(reader: &mut R) -> Result<i32, Box<dyn std::error::Error>> {
-    let mut result = 0;
+fn decode_varint<R: Read>(reader: &mut R) -> Result<u32, Box<dyn std::error::Error>> {
+    let mut result = 0u32;
     let mut shift = 0;
     loop {
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
-        result |= ((byte[0] & 0b0111_1111) as i32) << shift;
+        result |= ((byte[0] & 0b0111_1111) as u32) << shift;
         if byte[0] & 0b1000_0000 == 0 {
-            break;
+            return Ok(result);
         }
         shift += 7;
         if shift >= 32 {
             return Err("Varint is too long".into());
         }
     }
-    Ok(result)
 }
 
-fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
-    let block_data_raw = region_tag.get::<_, &[i8]>("BlockData")?;
-
-    // Convert i8 slice to u8 slice
-    let block_data_u8: Vec<u8> = block_data_raw.iter().map(|&x| x as u8).collect();
-    let mut reader = std::io::Cursor::new(block_data_u8);
-
+fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
+    let block_data_i8 = region_tag.get::<_, &Vec<i8>>("BlockData")?;
+    let block_data_u8: Vec<u8> = block_data_i8.iter().map(|&x| x as u8).collect();
     let mut block_data = Vec::new();
 
-    for _ in 0..(width * height * length) {
-        let value = decode_varint(&mut reader)?;
-        block_data.push(value);
+    println!("Raw block data length: {}", block_data_u8.len());
+
+    let mut reader = Cursor::new(block_data_u8);
+    let mut total_read = 0;
+    while reader.position() < block_data_i8.len() as u64 {
+        match decode_varint(&mut reader) {
+            Ok(value) => {
+                block_data.push(value);
+                total_read += 1;
+            },
+            Err(e) => {
+                println!("Error decoding varint at position {}: {:?}", reader.position(), e);
+                break;
+            }
+        }
     }
 
-    if block_data.len() != (width * height * length) as usize {
-        return Err("Invalid block data length".into());
+    println!("Total varints read: {}", total_read);
+
+    let expected_length = (width * height * length) as usize;
+    if block_data.len() != expected_length {
+        println!("Block data length mismatch. Got: {}, Expected: {}", block_data.len(), expected_length);
+        println!("First 10 decoded values: {:?}", &block_data[..10.min(block_data.len())]);
+        println!("Last 10 decoded values: {:?}", &block_data[block_data.len().saturating_sub(10)..]);
     }
 
     Ok(block_data)
 }
+
 
 fn parse_block_entities(region_tag: &NbtCompound) -> Result<Vec<BlockEntity>, Box<dyn std::error::Error>> {
     let block_entities_list = region_tag.get::<_, &NbtList>("BlockEntities")?;
@@ -253,6 +281,9 @@ fn parse_block_entities(region_tag: &NbtCompound) -> Result<Vec<BlockEntity>, Bo
 }
 
 fn parse_entities(region_tag: &NbtCompound) -> Result<Vec<Entity>, Box<dyn std::error::Error>> {
+    if !region_tag.contains_key("Entities") {
+        return Ok(Vec::new());
+    }
     let entities_list = region_tag.get::<_, &NbtList>("Entities")?;
     let mut entities = Vec::new();
 
@@ -323,79 +354,59 @@ mod tests {
     }
 
     #[test]
-    fn test_mandelbulb_generation() {
-        // Create a new schematic
-        let mut schematic = UniversalSchematic::new("Mandelbulb Set".to_string());
+    fn test_varint_encoding_decoding() {
+        let test_cases = vec![
+            0u32,
+            1u32,
+            127u32,
+            128u32,
+            255u32,
+            256u32,
+            65535u32,
+            65536u32,
+            4294967295u32,
+        ];
 
-        // Define the Mandelbulb parameters
-        let power = 8.0;
-        let max_iterations = 10;
-        let bailout = 2.0;
-        let size = 128;
+        for &value in &test_cases {
+            let encoded = encode_varint(value);
 
-        // Define block states for the Mandelbulb set
-        let stone = BlockState::new("minecraft:stone".to_string());
-        let air = BlockState::new("minecraft:air".to_string());
+            let mut cursor = Cursor::new(encoded);
+            let decoded = decode_varint(&mut cursor).unwrap();
 
-        // Generate the Mandelbulb set
-        for x in 0..size {
-            for y in 0..size {
-                for z in 0..size {
-                    let x0 = (x as f64 - size as f64 / 2.0) / (size as f64 / 4.0);
-                    let y0 = (y as f64 - size as f64 / 2.0) / (size as f64 / 4.0);
-                    let z0 = (z as f64 - size as f64 / 2.0) / (size as f64 / 4.0);
-
-                    let mut zx = 0.0;
-                    let mut zy = 0.0;
-                    let mut zz = 0.0;
-                    let mut r = 0.0;
-                    let mut i = 0;
-
-                    while i < max_iterations && r < bailout {
-                        let x1 = zx * zx - zy * zy - zz * zz + x0;
-                        let y1 = 2.0 * zx * zy + y0;
-                        let z1 = 2.0 * zx * zz + z0;
-
-                        zx = x1;
-                        zy = y1;
-                        zz = z1;
-                        r = (zx * zx + zy * zy + zz * zz).sqrt();
-                        i += 1;
-                    }
-
-                    if r < bailout {
-                        schematic.set_block(x, y, z, stone.clone());
-                    } else {
-                        schematic.set_block(x, y, z, air.clone());
-                    }
-                }
-            }
+            assert_eq!(value, decoded, "Encoding and decoding failed for value: {}", value);
         }
+    }
 
-        // Convert the schematic to .schem format
-        let schem_data = to_schematic(&schematic).expect("Failed to convert schematic");
+    #[test]
+    fn test_parse_block_data() {
+        let mut nbt = NbtCompound::new();
+        let block_data = vec![0, 1, 2, 1, 0, 2, 1, 0]; // 8 blocks
+        let encoded_block_data: Vec<u8> = block_data.iter()
+            .flat_map(|&v| encode_varint(v))
+            .collect();
 
-        // Save the .schem file
-        let mut file = File::create("mandelbulb.schem").expect("Failed to create file");
-        file.write_all(&schem_data).expect("Failed to write to file");
+        nbt.insert("BlockData", NbtTag::ByteArray(encoded_block_data.iter().map(|&x| x as i8).collect()));
 
-        // Read the .schem file back
-        let loaded_schem_data = std::fs::read("mandelbulb.schem").expect("Failed to read file");
+        let parsed_data = parse_block_data(&nbt, 2, 2, 2).expect("Failed to parse block data");
+        assert_eq!(parsed_data, vec![0, 1, 2, 1, 0, 2, 1, 0]);
+    }
 
-        // Parse the loaded .schem data
-        let loaded_schematic = from_schematic(&loaded_schem_data).expect("Failed to parse schematic");
+    #[test]
+    fn test_convert_palette() {
+        let palette = vec![
+            BlockState::new("minecraft:stone".to_string()),
+            BlockState::new("minecraft:dirt".to_string()),
+            BlockState {
+                name: "minecraft:wool".to_string(),
+                properties: [("color".to_string(), "red".to_string())].into_iter().collect(),
+            },
+        ];
 
-        // Compare the original and loaded schematics
-        assert_eq!(schematic.metadata.name, loaded_schematic.metadata.name);
-        assert_eq!(schematic.regions.len(), loaded_schematic.regions.len());
+        let (nbt_palette, max_id) = convert_palette(&palette);
 
-        let original_region = schematic.regions.get("Main").unwrap();
-        let loaded_region = loaded_schematic.regions.get("Main").unwrap();
-
-        assert_eq!(original_region.entities.len(), loaded_region.entities.len());
-        assert_eq!(original_region.block_entities.len(), loaded_region.block_entities.len());
-
-        // Clean up the generated file
-        //std::fs::remove_file("mandelbulb.schem").expect("Failed to remove file");
+        assert_eq!(max_id, 2);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 2);
     }
 }

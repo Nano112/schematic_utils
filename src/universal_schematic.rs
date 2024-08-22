@@ -9,7 +9,7 @@ use crate::metadata::Metadata;
 pub struct UniversalSchematic {
     pub metadata: Metadata,
     pub regions: HashMap<String, Region>,
-    default_region_name: String,
+    pub(crate) default_region_name: String,
 }
 
 impl UniversalSchematic {
@@ -56,6 +56,11 @@ impl UniversalSchematic {
 
     pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
         self.regions.get(region_name).and_then(|region| region.get_block(x, y, z))
+    }
+
+    pub fn get_dimensions(&self) -> (i32, i32, i32) {
+        let bounding_box = self.get_bounding_box();
+        bounding_box.get_dimensions()
     }
 
 
@@ -492,5 +497,34 @@ mod tests {
         let deserialized_palette = deserialized_schematic.get_region("Main").unwrap().palette().clone();
         assert_eq!(original_palette, deserialized_palette);
     }
+
+
+
+    #[test]
+    fn test_multiple_region_merging(){
+        let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
+
+        let mut region1 = Region::new("Region1".to_string(), (0, 0, 0), (2, 2, 2));
+        let mut region2 = Region::new("Region4".to_string(), (0, 0, 0), (-2, -2, -2));
+
+        // Add some blocks to the regions
+        region1.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
+        region1.set_block(1, 1, 1, BlockState::new("minecraft:dirt".to_string()));
+        region2.set_block(0, -1, -1, BlockState::new("minecraft:gold_block".to_string()));
+
+
+        schematic.add_region(region1);
+        schematic.add_region(region2);
+
+        let merged_region = schematic.get_merged_region();
+
+        assert_eq!(merged_region.count_blocks(), 3);
+        assert_eq!(merged_region.get_block(0, 0, 0), Some(&BlockState::new("minecraft:stone".to_string())));
+        assert_eq!(merged_region.get_block(1, 1, 1), Some(&BlockState::new("minecraft:dirt".to_string())));
+    }
+
+
+
+
 
 }

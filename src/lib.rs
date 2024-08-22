@@ -18,3 +18,7 @@ pub use universal_schematic::UniversalSchematic;
 pub use bounding_box::BoundingBox;
 pub use formats::litematic;
 pub use formats::schematic;
+
+pub use print_utils::print_json_schematic;
+pub use print_utils::print_schematic;
+pub use print_utils::print_palette;

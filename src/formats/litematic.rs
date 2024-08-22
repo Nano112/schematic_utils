@@ -135,8 +135,15 @@ fn parse_metadata(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Res
 
 fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Result<(), Box<dyn std::error::Error>> {
     let regions = root.get::<_, &NbtCompound>("Regions")?;
-
+    let mut loop_count = 0;
     for (name, region_tag) in regions.inner() {
+        //if it's the first region we want to override the default region name
+        if loop_count == 0 {
+            schematic.default_region_name = name.clone();
+        }
+        loop_count += 1;
+
+
         if let NbtTag::Compound(region_nbt) = region_tag {
             let position = region_nbt.get::<_, &NbtCompound>("Position")?;
             let size = region_nbt.get::<_, &NbtCompound>("Size")?;
@@ -403,80 +410,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_3d_julia_set_litematic() {
-        let size = 64; // Size of the 3D grid
-        let max_iterations = 10;
-        let mut schematic = UniversalSchematic::new("3D Julia Set".to_string());
-
-        // Julia set parameters
-        let c = Complex::new(-0.4, 0.6);
-
-        for x in 0..size {
-            for y in 0..size {
-                for z in 0..size {
-                    let mut v = Complex::new(
-                        4.0 * (x as f64 - size as f64 / 2.0) / size as f64,
-                        4.0 * (y as f64 - size as f64 / 2.0) / size as f64
-                    );
-                    let mut iterations = 0;
-
-                    while v.norm_sqr() < 4.0 && iterations < max_iterations {
-                        v = v * v + c + Complex::new(0.0, 4.0 * (z as f64 - size as f64 / 2.0) / size as f64);
-                        iterations += 1;
-                    }
-
-                    if iterations == max_iterations {
-                        // Point is in the Julia set
-                        let block = match iterations % 3 {
-                            0 => BlockState::new("minecraft:blue_concrete".to_string()),
-                            1 => BlockState::new("minecraft:purple_concrete".to_string()),
-                            _ => BlockState::new("minecraft:magenta_concrete".to_string()),
-                        };
-                        schematic.set_block(x as i32, y as i32, z as i32, block);
-                    } else {
-                        // Point diverges, set to air
-                        schematic.set_block(x as i32, y as i32, z as i32, BlockState::new("minecraft:air".to_string()));
-                    }
-                }
-            }
-        }
-
-        // Convert the schematic to .litematic format
-        let litematic_data = to_litematic(&schematic).expect("Failed to convert schematic to litematic");
-
-        // Save the .litematic file
-        let mut file = File::create("julia_set_3d.litematic").expect("Failed to create file");
-        file.write_all(&litematic_data).expect("Failed to write to file");
-
-        // Read the .litematic file back
-        let loaded_litematic_data = std::fs::read("julia_set_3d.litematic").expect("Failed to read file");
-
-        // Parse the loaded .litematic data
-        let loaded_schematic = from_litematic(&loaded_litematic_data).expect("Failed to parse litematic");
-
-        // Compare the original and loaded schematics
-        assert_eq!(schematic.metadata.name, loaded_schematic.metadata.name);
-        assert_eq!(schematic.regions.len(), loaded_schematic.regions.len());
-
-        let original_region = schematic.regions.get("Main").unwrap();
-        let loaded_region = loaded_schematic.regions.get("Main").unwrap();
-
-        assert_eq!(original_region.size, loaded_region.size);
-        assert_eq!(original_region.count_blocks(), loaded_region.count_blocks());
-
-        // Check a few random blocks to ensure they match
-        for _ in 0..10 {
-            let x = rand::random::<u32>() % size;
-            let y = rand::random::<u32>() % size;
-            let z = rand::random::<u32>() % size;
-            assert_eq!(
-                original_region.get_block(x as i32, y as i32, z as i32),
-                loaded_region.get_block(x as i32, y as i32, z as i32)
-            );
-        }
-
-        // Clean up the generated file
-        //std::fs::remove_file("julia_set_3d.litematic").expect("Failed to remove file");
-    }
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use serde::{Deserialize, Serialize, Serializer};
 use serde::ser::SerializeMap;
-use crate::{BlockEntity, BlockState, BoundingBox, Entity};
+use crate::{BlockEntity, BlockState, bounding_box, BoundingBox, Entity};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Region {
@@ -100,12 +100,54 @@ impl Region {
         true
     }
 
-    fn coords_to_index(&self, x: i32, y: i32, z: i32) -> usize {
-        let rx = if self.size.0 < 0 { self.size.0.abs() - 1 - (x - self.position.0) } else { x - self.position.0 };
-        let ry = if self.size.1 < 0 { self.size.1.abs() - 1 - (y - self.position.1) } else { y - self.position.1 };
-        let rz = if self.size.2 < 0 { self.size.2.abs() - 1 - (z - self.position.2) } else { z - self.position.2 };
-        (ry * self.size.0.abs() * self.size.2.abs() + rz * self.size.0.abs() + rx) as usize
+    pub fn get_bounding_box(&self) -> BoundingBox {
+        let end = (
+            self.position.0 + self.size.0 - self.size.0.signum(),
+            self.position.1 + self.size.1 - self.size.1.signum(),
+            self.position.2 + self.size.2 - self.size.2.signum()
+        );
+
+        BoundingBox {
+            min: (
+                self.position.0.min(end.0),
+                self.position.1.min(end.1),
+                self.position.2.min(end.2)
+            ),
+            max: (
+                self.position.0.max(end.0),
+                self.position.1.max(end.1),
+                self.position.2.max(end.2)
+            )
+        }
     }
+
+    fn coords_to_index(&self, x: i32, y: i32, z: i32) -> usize {
+        let bounding_box= self.get_bounding_box();
+        let dx = x - bounding_box.min.0;
+        let dy = y - bounding_box.min.1;
+        let dz = z - bounding_box.min.2;
+        (dy * self.size.0.abs() * self.size.2.abs() + dz * self.size.0.abs() + dx) as usize
+    }
+
+
+
+    pub fn index_to_coords(&self, index: usize) -> (i32, i32, i32) {
+        let bounding_box = self.get_bounding_box();
+        //first compute the absolute position within the bounding box, and then add the min position
+        let dimensions = bounding_box.get_dimensions();
+        let x = index as i32 % dimensions.0 + bounding_box.min.0;
+        let y = (index as i32 / (dimensions.0 * dimensions.2)) % dimensions.1 + bounding_box.min.1;
+        let z = (index as i32 / dimensions.0) % dimensions.2 + bounding_box.min.2;
+        (x, y, z)
+
+    }
+
+    pub fn get_dimensions(&self) -> (i32, i32, i32) {
+        let bounding_box = self.get_bounding_box();
+        bounding_box.get_dimensions()
+    }
+
+
 
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<&BlockState> {
         if !self.is_in_region(x, y, z) {
@@ -309,26 +351,7 @@ impl Region {
         self.block_entities.remove(&position)
     }
 
-    pub fn get_bounding_box(&self) -> BoundingBox {
-        let end = (
-            self.position.0 + self.size.0 - self.size.0.signum(),
-            self.position.1 + self.size.1 - self.size.1.signum(),
-            self.position.2 + self.size.2 - self.size.2.signum()
-        );
 
-        BoundingBox {
-            min: (
-                self.position.0.min(end.0),
-                self.position.1.min(end.1),
-                self.position.2.min(end.2)
-            ),
-            max: (
-                self.position.0.max(end.0),
-                self.position.1.max(end.1),
-                self.position.2.max(end.2)
-            )
-        }
-    }
 
     pub fn to_nbt(&self) -> NbtTag {
         let mut tag = NbtCompound::new();
@@ -505,18 +528,7 @@ impl Region {
         std::cmp::max((palette_size as f64).log2().ceil() as usize, 2)
     }
 
-    pub fn index_to_coords(&self, index: usize) -> (i32, i32, i32) {
-        let abs_size = (self.size.0.abs(), self.size.1.abs(), self.size.2.abs());
-        let x = (index % abs_size.0 as usize) as i32;
-        let y = ((index / abs_size.0 as usize) % abs_size.1 as usize) as i32;
-        let z = (index / (abs_size.0 * abs_size.1) as usize) as i32;
 
-        let rx = if self.size.0 < 0 { self.position.0 + self.size.0 + 1 + x } else { self.position.0 + x };
-        let ry = if self.size.1 < 0 { self.position.1 + self.size.1 + 1 + y } else { self.position.1 + y };
-        let rz = if self.size.2 < 0 { self.position.2 + self.size.2 + 1 + z } else { self.position.2 + z };
-
-        (rx, ry, rz)
-    }
 
     pub fn count_blocks(&self) -> usize {
         self.blocks.iter().filter(|&&block_index| block_index != 0).count()
@@ -931,6 +943,44 @@ mod tests {
         assert_eq!(bounding_box.min, (-1, 0, -1));
         assert_eq!(bounding_box.max, (1, 2, 1));
     }
+
+    #[test]
+    fn test_coords_to_index() {
+        let mut region = Region::new("Test".to_string(), (0, 0, 0), (2, 2, 2));
+
+        let mut volume1 = region.volume();
+        for i in 0..8 {
+            let coords = region.index_to_coords(i);
+            let index = region.coords_to_index(coords.0, coords.1, coords.2);
+            assert!(index >= 0 && index < volume1);
+            assert_eq!(index, i);
+        }
+
+        let region2 = Region::new("Test".to_string(), (0, 0, 0), (-2, -2, -2));
+
+        let mut volume2 = region2.volume();
+        for i in 0..8 {
+            let coords = region2.index_to_coords(i);
+            let index = region2.coords_to_index(coords.0, coords.1, coords.2);
+            assert!(index >= 0 && index < volume2);
+            assert_eq!(index, i);
+        }
+
+        region.merge(&region2);
+
+        let mut volume3 = region.volume();
+        for i in 0..27 {
+            let coords = region.index_to_coords(i);
+            let index = region.coords_to_index(coords.0, coords.1, coords.2);
+            assert!(index >= 0 && index < volume3);
+            assert_eq!(index, i);
+        }
+
+
+
+    }
+
+
 
     #[test]
     fn test_merge_negative_size() {
