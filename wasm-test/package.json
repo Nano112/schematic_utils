@@ -1,0 +1,16 @@
+{
+  "name": "schematic-utils",
+  "module": "server.js",
+  "type": "module",
+  "scripts": {
+    "build-wasm": "cd .. && ./build-wasm.sh",
+    "serve": "bun run server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

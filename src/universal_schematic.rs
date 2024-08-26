@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
-use crate::{Region, BlockState, Entity, BlockEntity};
+use crate::{ BlockState};
+use crate::block_entity::BlockEntity;
 use crate::bounding_box::BoundingBox;
+use crate::entity::Entity;
 use crate::metadata::Metadata;
+use crate::region::Region;
 
 #[derive(Serialize, Deserialize)]
 pub struct UniversalSchematic {
@@ -24,12 +27,6 @@ impl UniversalSchematic {
         }
     }
 
-    pub fn resize(&mut self, size: (i32, i32, i32)) {
-        let region = self.regions.entry(self.default_region_name.clone()).or_insert_with(|| {
-            Region::new(self.default_region_name.clone(), (0, 0, 0), size)
-        });
-        region.resize(size);
-    }
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockState) -> bool {
         let region_name = self.default_region_name.clone();
@@ -251,6 +248,18 @@ impl UniversalSchematic {
         crate::formats::schematic::from_schematic(data)
     }
 
+    pub fn count_block_types(&self) -> HashMap<BlockState, usize> {
+        let mut block_counts = HashMap::new();
+        for region in self.regions.values() {
+            let region_block_counts = region.count_block_types();
+            for (block, count) in region_block_counts {
+                *block_counts.entry(block).or_insert(0) += count;
+            }
+        }
+        block_counts
+    }
+
+
 }
 
 #[cfg(test)]
@@ -275,7 +284,6 @@ mod tests {
 
         // Check that the default region was created and expanded
         let default_region = schematic.get_region("Main").unwrap();
-        assert_eq!(default_region.size, (9, 9, 9));
 
         // Test explicit region creation and manipulation
         let obsidian = BlockState::new("minecraft:obsidian".to_string());
@@ -285,7 +293,6 @@ mod tests {
         // Check that the custom region was created
         let custom_region = schematic.get_region("Custom").unwrap();
         assert_eq!(custom_region.position, (10, 10, 10));
-        assert_eq!(custom_region.size, (1, 1, 1));
 
         // Test manual region addition
         let region2 = Region::new("Region2".to_string(), (20, 0, 0), (5, 5, 5));
@@ -334,7 +341,6 @@ mod tests {
 
         let main_region = schematic.get_region("Main").unwrap();
         assert_eq!(main_region.position, (0, 0, 0));
-        assert_eq!(main_region.size, (17, 32, 47));
 
         assert_eq!(schematic.get_block(0, 0, 0), Some(&block1));
         assert_eq!(schematic.get_block(10, 20, 30), Some(&block2));

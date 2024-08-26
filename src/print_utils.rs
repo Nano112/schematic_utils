@@ -1,5 +1,6 @@
-use crate::{UniversalSchematic, Region, BlockState};
+use crate::{UniversalSchematic, BlockState};
 use crate::metadata::Metadata;
+use crate::region::Region;
 
 impl std::fmt::Debug for UniversalSchematic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -10,81 +11,86 @@ impl std::fmt::Debug for UniversalSchematic {
     }
 }
 
-#[allow(dead_code)]
-pub fn print_schematic(schematic: &UniversalSchematic) {
-    println!("Schematic:");
-    print_metadata(&schematic.metadata);
-    println!("Regions:");
+pub fn format_schematic(schematic: &UniversalSchematic) -> String {
+    let mut output = String::new();
+    output.push_str("Schematic:\n");
+    output.push_str(&format_metadata(&schematic.metadata));
+    output.push_str("Regions:\n");
     for (name, region) in &schematic.regions {
-        print_region(name, region, schematic);
+        output.push_str(&format_region(name, region, schematic));
     }
+    output
 }
 
-#[allow(dead_code)]
-pub fn print_palette(palette: &Vec<BlockState>) {
-    println!("Palette:");
+pub fn get_schematic_json(schematic: &UniversalSchematic) -> String {
+    schematic.get_json_string().unwrap_or_else(|e| format!("Failed to serialize: {}", e))
+}
+
+pub fn format_palette(palette: &Vec<BlockState>) -> String {
+    let mut output = String::from("Palette:\n");
     for (i, block) in palette.iter().enumerate() {
-        println!("  {}: {}", i, block.name);
+        output.push_str(&format!("  {}: {}\n", i, block.name));
     }
+    output
 }
 
-#[allow(dead_code)]
-pub fn print_region(name: &str, region: &Region, schematic: &UniversalSchematic) {
-    println!("  Region: {}", name);
-
-    println!("    Position: {:?}", region.position);
-    println!("    Size: {:?}", region.size);
-    println!("    Blocks:");
+pub fn format_region(name: &str, region: &Region, schematic: &UniversalSchematic) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("  Region: {}\n", name));
+    output.push_str(&format!("    Position: {:?}\n", region.position));
+    output.push_str(&format!("    Size: {:?}\n", region.size));
+    output.push_str("    Blocks:\n");
     for i in 0..region.blocks.len() {
         let block_palette_index = region.blocks[i];
         let block_position = region.index_to_coords(i);
         let block_state = region.palette.get(block_palette_index as usize).unwrap();
-        println!("      {} @ {:?}: {:?}", block_palette_index, block_position, block_state);
+        output.push_str(&format!("      {} @ {:?}: {:?}\n", block_palette_index, block_position, block_state));
     }
+    output
 }
-#[allow(dead_code)]
-pub fn print_metadata(metadata: &Metadata) {
-    println!("Metadata:");
+
+pub fn format_metadata(metadata: &Metadata) -> String {
+    let mut output = String::from("Metadata:\n");
     if let Some(author) = &metadata.author {
-        println!("  Author: {}", author);
+        output.push_str(&format!("  Author: {}\n", author));
     }
     if let Some(name) = &metadata.name {
-        println!("  Name: {}", name);
+        output.push_str(&format!("  Name: {}\n", name));
     }
     if let Some(description) = &metadata.description {
-        println!("  Description: {}", description);
+        output.push_str(&format!("  Description: {}\n", description));
     }
     if let Some(created) = metadata.created {
-        println!("  Created: {}", created);
+        output.push_str(&format!("  Created: {}\n", created));
     }
     if let Some(modified) = metadata.modified {
-        println!("  Modified: {}", modified);
+        output.push_str(&format!("  Modified: {}\n", modified));
     }
     if let Some(mc_version) = metadata.mc_version {
-        println!("  Minecraft Version: {}", mc_version);
+        output.push_str(&format!("  Minecraft Version: {}\n", mc_version));
     }
     if let Some(we_version) = metadata.we_version {
-        println!("  WorldEdit Version: {}", we_version);
+        output.push_str(&format!("  WorldEdit Version: {}\n", we_version));
     }
+    output
 }
 
-#[allow(dead_code)]
-pub fn print_json_schematic(schematic: &UniversalSchematic) {
+pub fn format_json_schematic(schematic: &UniversalSchematic) -> String {
     match schematic.get_json_string() {
-        Ok(json) => println!("{}", json),
-        Err(e) => eprintln!("Failed to serialize: {}", e),
+        Ok(json) => json,
+        Err(e) => format!("Failed to serialize: {}", e),
     }
 }
 
-#[allow(dead_code)]
-pub fn print_block_state(block: &BlockState) {
-    println!("Block: {}", block.name);
+pub fn format_block_state(block: &BlockState) -> String {
+    let mut output = format!("Block: {}\n", block.name);
     if !block.properties.is_empty() {
-        println!("Properties:");
+        output.push_str("Properties:\n");
         for (key, value) in &block.properties {
-            println!("  {}: {}", key, value);
+            output.push_str(&format!("  {}: {}\n", key, value));
         }
     }
+    output
 }
 
 #[cfg(test)]
@@ -100,13 +106,12 @@ mod tests {
         schematic.set_block(0, 0, 0, stone.clone());
         schematic.set_block(1, 1, 1, dirt.clone());
 
-        match schematic.get_json_string() {
-            Ok(json) => println!("{}", json),
-            Err(e) => eprintln!("Failed to serialize: {}", e),
-        }
+        let json = get_schematic_json(&schematic);
+        println!("{}", json);
 
         println!("{:?}", schematic);
     }
+
     #[test]
     fn test_schematic_debug_print() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
@@ -121,13 +126,13 @@ mod tests {
         println!("{:?}", schematic);
 
         // This will print a detailed view of the schematic
-        print_schematic(&schematic);
+        println!("{}", format_schematic(&schematic));
 
         // This will print details of a specific block state
-        print_block_state(&stone);
+        println!("{}", format_block_state(&stone));
 
         // Test with a custom region
         schematic.set_block_in_region("Custom", 5, 5, 5, stone.clone());
-        print_schematic(&schematic);
+        println!("{}", format_schematic(&schematic));
     }
 }

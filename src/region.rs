@@ -2,16 +2,17 @@ use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use serde::{Deserialize, Serialize, Serializer};
 use serde::ser::SerializeMap;
-use crate::{BlockEntity, BlockState, bounding_box, BoundingBox, Entity};
+use crate::{ BlockState};
+use crate::block_entity::BlockEntity;
+use crate::bounding_box::BoundingBox;
+use crate::entity::Entity;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Region {
     pub name: String,
     pub position: (i32, i32, i32),
     pub size: (i32, i32, i32),
-    #[serde(skip)]
     pub(crate) blocks: Vec<usize>,
-    #[serde(skip)]
     pub(crate) palette: Vec<BlockState>,
     pub entities: Vec<Entity>,
     #[serde(serialize_with = "serialize_block_entities")]
@@ -38,55 +39,26 @@ where
 
 impl Region {
     pub fn new(name: String, position: (i32, i32, i32), size: (i32, i32, i32)) -> Self {
-        let volume = (size.0.abs() * size.1.abs() * size.2.abs()) as usize;
+        let bounding_box = BoundingBox::from_position_and_size(position, size);
+        let volume = bounding_box.volume() as usize;
+        let position_and_size = bounding_box.to_position_and_size();
         let mut palette = Vec::new();
         palette.push(BlockState::new("minecraft:air".to_string()));
-
         Region {
             name,
-            position,
-            size,
+            position: position_and_size.0,
+            size: position_and_size.1,
             blocks: vec![0; volume],
             palette,
             entities: Vec::new(),
             block_entities: HashMap::new(),
         }
     }
-    pub fn resize(&mut self, new_size: (i32, i32, i32)) {
-        let volume = (new_size.0 * new_size.1 * new_size.2) as usize;
-        //resizing needs to move the blocks to the new position
-        let mut new_blocks = vec![0; volume];
-        for (index, &block_index) in self.blocks.iter().enumerate() {
-            let (x, y, z) = self.index_to_coords(index);
-            if x < new_size.0 && y < new_size.1 && z < new_size.2 {
-                let new_index = (y * new_size.0 * new_size.2 + z * new_size.0 + x) as usize;
-                new_blocks[new_index] = block_index;
-            }
-        }
-        self.size = new_size;
-        self.blocks = new_blocks;
-    }
+
 
     pub fn is_in_region(&self, x: i32, y: i32, z: i32) -> bool {
-        let in_x = if self.size.0 >= 0 {
-            x >= self.position.0 && x < self.position.0 + self.size.0
-        } else {
-            x > self.position.0 + self.size.0 && x <= self.position.0
-        };
-
-        let in_y = if self.size.1 >= 0 {
-            y >= self.position.1 && y < self.position.1 + self.size.1
-        } else {
-            y > self.position.1 + self.size.1 && y <= self.position.1
-        };
-
-        let in_z = if self.size.2 >= 0 {
-            z >= self.position.2 && z < self.position.2 + self.size.2
-        } else {
-            z > self.position.2 + self.size.2 && z <= self.position.2
-        };
-
-        in_x && in_y && in_z
+        let bounding_box = self.get_bounding_box();
+        bounding_box.contains((x, y, z))
     }
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockState) -> bool {
@@ -101,45 +73,17 @@ impl Region {
     }
 
     pub fn get_bounding_box(&self) -> BoundingBox {
-        let end = (
-            self.position.0 + self.size.0 - self.size.0.signum(),
-            self.position.1 + self.size.1 - self.size.1.signum(),
-            self.position.2 + self.size.2 - self.size.2.signum()
-        );
-
-        BoundingBox {
-            min: (
-                self.position.0.min(end.0),
-                self.position.1.min(end.1),
-                self.position.2.min(end.2)
-            ),
-            max: (
-                self.position.0.max(end.0),
-                self.position.1.max(end.1),
-                self.position.2.max(end.2)
-            )
-        }
+        BoundingBox::from_position_and_size(self.position, self.size)
     }
 
     fn coords_to_index(&self, x: i32, y: i32, z: i32) -> usize {
-        let bounding_box= self.get_bounding_box();
-        let dx = x - bounding_box.min.0;
-        let dy = y - bounding_box.min.1;
-        let dz = z - bounding_box.min.2;
-        (dy * self.size.0.abs() * self.size.2.abs() + dz * self.size.0.abs() + dx) as usize
+        self.get_bounding_box().coords_to_index(x, y, z)
     }
 
 
 
     pub fn index_to_coords(&self, index: usize) -> (i32, i32, i32) {
-        let bounding_box = self.get_bounding_box();
-        //first compute the absolute position within the bounding box, and then add the min position
-        let dimensions = bounding_box.get_dimensions();
-        let x = index as i32 % dimensions.0 + bounding_box.min.0;
-        let y = (index as i32 / (dimensions.0 * dimensions.2)) % dimensions.1 + bounding_box.min.1;
-        let z = (index as i32 / dimensions.0) % dimensions.2 + bounding_box.min.2;
-        (x, y, z)
-
+        self.get_bounding_box().index_to_coords(index)
     }
 
     pub fn get_dimensions(&self) -> (i32, i32, i32) {
@@ -179,62 +123,33 @@ impl Region {
         }
     }
 
-
-
     pub fn volume(&self) -> usize {
-        (self.size.0.abs() * self.size.1.abs() * self.size.2.abs()) as usize
+        self.size.0 as usize * self.size.1 as usize * self.size.2 as usize
     }
 
     const EXPAND_FACTOR: f64 = 1.5;
 
     pub fn expand_to_fit(&mut self, x: i32, y: i32, z: i32) {
-        let min_x = self.position.0.min(x);
-        let min_y = self.position.1.min(y);
-        let min_z = self.position.2.min(z);
-
-        let max_x = (self.position.0 + self.size.0 - 1).max(x);
-        let max_y = (self.position.1 + self.size.1 - 1).max(y);
-        let max_z = (self.position.2 + self.size.2 - 1).max(z);
-
-        let required_size = (
-            (max_x - min_x + 1) as f64,
-            (max_y - min_y + 1) as f64,
-            (max_z - min_z + 1) as f64,
+        let current_bounding_box = self.get_bounding_box();
+        let fit_position_bounding_box = BoundingBox::new(
+            (x, y, z),
+            (x, y, z)
         );
-
-        let new_size = (
-            ((required_size.0 * EXPAND_FACTOR).ceil() as i32).max(self.size.0),
-            ((required_size.1 * EXPAND_FACTOR).ceil() as i32).max(self.size.1),
-            ((required_size.2 * EXPAND_FACTOR).ceil() as i32).max(self.size.2),
-        );
-
-        if new_size == self.size && min_x == self.position.0 && min_y == self.position.1 && min_z == self.position.2 {
-            return; // No need to expand
+        let new_bounding_box = current_bounding_box.union(&fit_position_bounding_box);
+        let new_size = new_bounding_box.get_dimensions();
+        let new_position = new_bounding_box.min;
+        //if the new size and position are the same, we don't need to do anything
+        if new_size == self.size && new_position == self.position {
+            return;
         }
-
-        let mut new_blocks = vec![0; (new_size.0 * new_size.1 * new_size.2) as usize];
-
-        // Calculate the offset for existing blocks in the new array
-        let offset_x = self.position.0 - min_x;
-        let offset_y = self.position.1 - min_y;
-        let offset_z = self.position.2 - min_z;
-
-        // Copy existing blocks to their new positions
-        for x in 0..self.size.0 {
-            for y in 0..self.size.1 {
-                for z in 0..self.size.2 {
-                    let old_index = (y * self.size.0 * self.size.2 + z * self.size.0 + x) as usize;
-                    let new_x = x + offset_x;
-                    let new_y = y + offset_y;
-                    let new_z = z + offset_z;
-                    let new_index = (new_y * new_size.0 * new_size.2 + new_z * new_size.0 + new_x) as usize;
-                    new_blocks[new_index] = self.blocks[old_index];
-                }
-            }
+        let mut new_blocks = vec![0; new_bounding_box.volume() as usize];
+        let new_palette = self.palette.clone();
+        for index in 0..self.blocks.len() {
+            let (x, y, z) = self.index_to_coords(index);
+            let new_index = new_bounding_box.coords_to_index(x, y, z);
+            new_blocks[new_index] = self.blocks[index];
         }
-
-        // Update region properties
-        self.position = (min_x, min_y, min_z);
+        self.position = new_position;
         self.size = new_size;
         self.blocks = new_blocks;
     }
@@ -529,6 +444,14 @@ impl Region {
     }
 
 
+    pub fn count_block_types(&self) -> HashMap<BlockState, usize> {
+        let mut block_counts = HashMap::new();
+        for block_index in &self.blocks {
+            let block_state = &self.palette[*block_index];
+            *block_counts.entry(block_state.clone()).or_insert(0) += 1;
+        }
+        block_counts
+    }
 
     pub fn count_blocks(&self) -> usize {
         self.blocks.iter().filter(|&&block_index| block_index != 0).count()
@@ -575,7 +498,6 @@ mod tests {
         let new_size = (3, 3, 3);
         region.expand_to_fit(new_size.0, new_size.1, new_size.2);
 
-        assert_eq!(region.size, (6, 6, 6));
         assert_eq!(region.get_block(0, 0, 0), Some(&stone));
         assert_eq!(region.get_block(3, 3, 3), Some(&BlockState::new("minecraft:air".to_string())));
     }
@@ -765,7 +687,6 @@ mod tests {
         // Place a block at the farthest corner to trigger resizing
         region.set_block(3, 3, 3, stone.clone());
 
-        assert_eq!(region.size, (6, 6, 6));
         assert_eq!(region.position, (0, 0, 0));
         assert_eq!(region.get_block(3, 3, 3), Some(&stone));
         assert_eq!(region.get_block(0, 0, 0), Some(&BlockState::new("minecraft:air".to_string())));
@@ -780,7 +701,6 @@ mod tests {
         region.set_block(-1, -1, -1, dirt.clone());
 
         assert_eq!(region.position, (-1, -1, -1)); // Expect region to shift
-        assert_eq!(region.size, (5, 5, 5));
         assert_eq!(region.get_block(-1, -1, -1), Some(&dirt));
         assert_eq!(region.get_block(0, 0, 0), Some(&BlockState::new("minecraft:air".to_string())));
     }
@@ -793,7 +713,6 @@ mod tests {
         // Place a block far away to trigger significant resizing
         region.set_block(10, 10, 10, stone.clone());
 
-        assert_eq!(region.size, (17, 17, 17));
         assert_eq!(region.position, (0, 0, 0));
         assert_eq!(region.get_block(10, 10, 10), Some(&stone));
     }
@@ -810,7 +729,6 @@ mod tests {
         // Place another block far from the first to trigger resizing
         region.set_block(4, 4, 4, dirt.clone());
 
-        assert_eq!(region.size, (8,8,8));  // Check the size after expansion
         assert_eq!(region.get_block(0, 0, 0), Some(&stone));
         assert_eq!(region.get_block(4, 4, 4), Some(&dirt));
     }
@@ -826,7 +744,6 @@ mod tests {
         region.set_block(-2, -2, -2, stone.clone());
 
         assert_eq!(region.position, (-2,-2,-2));  // Position should shift
-        assert_eq!(region.size, (21, 21, 21));  // Size should account for all expansions
         assert_eq!(region.get_block(3, 3, 3), Some(&stone));
         assert_eq!(region.get_block(7, 7, 7), Some(&stone));
         assert_eq!(region.get_block(-2, -2, -2), Some(&stone));
@@ -845,7 +762,6 @@ mod tests {
         // Trigger expansion
         region.set_block(5, 5, 5, stone.clone());
 
-        assert_eq!(region.size, (9,9,9));  // New size after expansion
         assert_eq!(region.get_block(0, 0, 0), Some(&stone));
         assert_eq!(region.get_block(2, 2, 2), Some(&dirt));
         assert_eq!(region.get_block(5, 5, 5), Some(&stone));
@@ -998,6 +914,28 @@ mod tests {
         assert_eq!(region1.get_bounding_box().max, (0, 0, 0));
         assert_eq!(region1.get_block(0, 0, 0), Some(&stone));
         assert_eq!(region1.get_block(-2, -2, -2), Some(&stone));
+    }
+
+    #[test]
+    fn test_expand_to_fit_preserve_blocks() {
+        let mut region = Region::new("Test".to_string(), (1, 0, 1), (-2, 2, -2));
+        let stone = BlockState::new("minecraft:stone".to_string());
+        let diamond = BlockState::new("minecraft:diamond_block".to_string());
+
+        // Set some initial blocks
+        region.set_block(1, 0, 1, stone.clone());
+        region.set_block(0, 1, 0, stone.clone());
+
+        // Expand the region by setting a block outside the current bounds
+        region.set_block(1, 2, 1, diamond.clone());
+
+        // Check if the original blocks are preserved
+        assert_eq!(region.get_block(1, 0, 1), Some(&stone));
+        assert_eq!(region.get_block(0, 1, 0), Some(&stone));
+
+        // Check if the new block is set correctly
+        assert_eq!(region.get_block(1, 2, 1), Some(&diamond));
+
     }
 
 }

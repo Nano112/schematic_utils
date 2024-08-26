@@ -1,10 +1,12 @@
-use std::collections::HashMap;
-use crate::{UniversalSchematic, Region, BlockState, Entity, BlockEntity, BoundingBox, print_palette};
+use crate::{UniversalSchematic, BlockState};
 use quartz_nbt::{NbtCompound, NbtTag, NbtList};
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use std::io::{Cursor, Read};
+use crate::block_entity::BlockEntity;
+use crate::entity::Entity;
+use crate::region::Region;
 
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
@@ -95,7 +97,6 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 
     let palette = parse_palette(&root)?;
 
-    print_palette(&palette);
     let block_data = parse_block_data(&root, width, height, length)?;
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
@@ -145,7 +146,7 @@ fn convert_entities(region: &Region) -> NbtList {
 fn parse_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
     let palette_compound = region_tag.get::<_, &NbtCompound>("Palette")?;
     let palette_max = region_tag.get::<_, i32>("PaletteMax")? as usize;
-    let mut palette = vec![BlockState::new("minecraft:air".to_string()); palette_max];
+    let mut palette = vec![BlockState::new("minecraft:air".to_string()); palette_max + 1];
 
     for (block_state_str, value) in palette_compound.inner() {
         if let NbtTag::Int(id) = value {
@@ -309,8 +310,6 @@ mod tests {
     fn test_schematic_file_generation() {
         // Create a test schematic
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
-        //resize the schematic
-        //schematic.resize((5, 5, 5));
         let stone = BlockState::new("minecraft:stone".to_string());
         let dirt = BlockState::new("minecraft:dirt".to_string());
 

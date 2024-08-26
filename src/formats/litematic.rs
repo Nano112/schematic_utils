@@ -1,7 +1,9 @@
 use quartz_nbt::{NbtCompound, NbtTag, NbtList};
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::{UniversalSchematic, Region, BlockState, Entity, BlockEntity};
+use crate::{UniversalSchematic, BlockState};
+use crate::block_entity::BlockEntity;
+use crate::entity::Entity;
+use crate::region::Region;
 
 pub fn to_litematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
@@ -210,7 +212,7 @@ mod tests {
     use std::io::Write;
     use num_complex::Complex;
     use super::*;
-    use crate::{UniversalSchematic, Region, BlockState, Entity, BlockEntity};
+    use crate::{UniversalSchematic, BlockState};
 
     #[test]
     fn test_create_metadata() {
