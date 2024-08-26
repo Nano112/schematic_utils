@@ -134,13 +134,13 @@ function _assertClass(instance, klass) {
 * @param {SchematicWrapper} schematic
 * @returns {string}
 */
-export function print_json_schematic(schematic) {
+export function debug_schematic(schematic) {
     let deferred1_0;
     let deferred1_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         _assertClass(schematic, SchematicWrapper);
-        wasm.print_json_schematic(retptr, schematic.__wbg_ptr);
+        wasm.debug_schematic(retptr, schematic.__wbg_ptr);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         deferred1_0 = r0;
@@ -156,13 +156,13 @@ export function print_json_schematic(schematic) {
 * @param {SchematicWrapper} schematic
 * @returns {string}
 */
-export function debug_schematic(schematic) {
+export function debug_json_schematic(schematic) {
     let deferred1_0;
     let deferred1_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         _assertClass(schematic, SchematicWrapper);
-        wasm.debug_schematic(retptr, schematic.__wbg_ptr);
+        wasm.debug_json_schematic(retptr, schematic.__wbg_ptr);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         deferred1_0 = r0;

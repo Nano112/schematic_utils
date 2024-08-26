@@ -52,6 +52,17 @@ impl UniversalSchematic {
         None
     }
 
+    pub fn get_blocks(&self) -> Vec<BlockState> {
+        let mut blocks: Vec<BlockState> = Vec::new();
+        for region in self.regions.values() {
+            let region_palette = region.get_palette();
+            for block_index in &region.blocks {
+                blocks.push(region_palette[*block_index as usize].clone());
+            }
+        }
+        blocks
+    }
+
     pub fn get_region_names(&self) -> Vec<String> {
         self.regions.keys().cloned().collect()
     }
@@ -59,8 +70,6 @@ impl UniversalSchematic {
     pub fn get_region_from_index(&self, index: usize) -> Option<&Region> {
         self.regions.values().nth(index)
     }
-
-
 
 
     pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
@@ -514,8 +523,8 @@ mod tests {
         assert_eq!(original_entities, deserialized_entities);
 
         // Check if palettes are correctly deserialized (now checking the region's palette)
-        let original_palette = schematic.get_region("Main").unwrap().palette().clone();
-        let deserialized_palette = deserialized_schematic.get_region("Main").unwrap().palette().clone();
+        let original_palette = schematic.get_region("Main").unwrap().get_palette_nbt().clone();
+        let deserialized_palette = deserialized_schematic.get_region("Main").unwrap().get_palette_nbt().clone();
         assert_eq!(original_palette, deserialized_palette);
     }
 

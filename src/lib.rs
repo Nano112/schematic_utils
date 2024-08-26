@@ -68,10 +68,37 @@ impl SchematicWrapper {
                 self.0.regions.len()
         )
     }
+
+    // pub fn blocks(&self) -> Vec<BlockState> {
+    //     self.0.get_blocks()
+    // }
+    //
+    // pub fn get_dimensions(&self) -> Vec<i32> {
+    //     let (x, y, z) = self.0.get_dimensions();
+    //     vec![x, y, z]
+    // }
+    //
+    // pub fn get_block_count(&self) -> i32 {
+    //     self.0.total_blocks()
+    // }
+    //
+    // pub fn get_volume(&self) -> i32 {
+    //     self.0.total_volume()
+    // }
+    //
+    // pub fn get_region_names(&self) -> Vec<String> {
+    //     self.0.get_region_names()
+    // }
 }
 
 #[wasm_bindgen]
 pub fn debug_schematic(schematic: &SchematicWrapper) -> String {
     format!("{}\n{}", schematic.debug_info(), print_schematic(&schematic.0))
 }
+
+#[wasm_bindgen]
+pub fn debug_json_schematic(schematic: &SchematicWrapper) -> String {
+    format!("{}\n{}", schematic.debug_info(), print_json_schematic(&schematic.0))
+}
+
 

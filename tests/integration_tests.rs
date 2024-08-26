@@ -5,7 +5,7 @@ use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, sch
 #[test]
 fn test_litematic_to_schem_conversion() {
 
-    let name = "all_items";
+    let name = "quarry";
 
     // Path to the sample .litematic file
     let input_path_str = format!("tests/samples/{}.litematic", name);
@@ -23,11 +23,11 @@ fn test_litematic_to_schem_conversion() {
     let region_blocks = schematic.get_region_from_index(0).unwrap().blocks.clone();
 
     //print the length of the blocks list
-    println!("{:?}", region_blocks.len());
+    // println!("{:?}", region_blocks.len());
     //print the blocks list
-    println!("{:?}", region_blocks);
+    // println!("{:?}", region_blocks);
 
-    println!("{:?}", schematic.count_block_types());
+    // println!("{:?}", schematic.count_block_types());
     //place a diamond block at the center of the schematic
     // schematic.set_block(-1,-1,-1, BlockState::new("minecraft:diamond_block".to_string()));
 
@@ -41,8 +41,8 @@ fn test_litematic_to_schem_conversion() {
         }
     }
     // print the schematic in json format
-    let json = print_json_schematic(&schematic);
-    println!("{}", json);
+    // let json = print_json_schematic(&schematic);
+    // println!("{}", json);
 
 
 

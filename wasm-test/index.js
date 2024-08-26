@@ -1,4 +1,4 @@
-import init, { SchematicWrapper, print_json_schematic } from './minecraft_schematic_utils.js';
+import init, { SchematicWrapper } from './minecraft_schematic_utils.js';
 
 let schematic;
 

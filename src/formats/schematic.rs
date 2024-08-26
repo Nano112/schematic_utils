@@ -45,8 +45,8 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
         let value = decode_varint(&mut reader)?;
         decoded_data.push(value);
     }
-    println!("Decoded Data: {:?}", decoded_data);
-    println!("Decoded Data Length: {:?}", decoded_data.len());
+    // println!("Decoded Data: {:?}", decoded_data);
+    // println!("Decoded Data Length: {:?}", decoded_data.len());
 
     root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
@@ -238,7 +238,6 @@ fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u
     let block_data_u8: Vec<u8> = block_data_i8.iter().map(|&x| x as u8).collect();
     let mut block_data = Vec::new();
 
-    println!("Raw block data length: {}", block_data_u8.len());
 
     let mut reader = Cursor::new(block_data_u8);
     let mut total_read = 0;
@@ -255,7 +254,6 @@ fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u
         }
     }
 
-    println!("Total varints read: {}", total_read);
 
     let expected_length = (width * height * length) as usize;
     if block_data.len() != expected_length {

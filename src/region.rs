@@ -479,7 +479,10 @@ impl Region {
         packed_states
     }
 
-    pub(crate) fn palette(&self) -> NbtList {
+    pub fn get_palette(&self) -> Vec<BlockState> {
+        self.palette.clone()
+    }
+    pub(crate) fn get_palette_nbt(&self) -> NbtList {
         let mut palette = NbtList::new();
         for block in &self.palette {
             palette.push(block.to_nbt());
