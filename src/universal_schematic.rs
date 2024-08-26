@@ -12,8 +12,10 @@ use crate::region::Region;
 pub struct UniversalSchematic {
     pub metadata: Metadata,
     pub regions: HashMap<String, Region>,
-    pub(crate) default_region_name: String,
+    pub default_region_name: String,
 }
+
+
 
 impl UniversalSchematic {
     pub fn new(name: String) -> Self {
@@ -49,6 +51,16 @@ impl UniversalSchematic {
         }
         None
     }
+
+    pub fn get_region_names(&self) -> Vec<String> {
+        self.regions.keys().cloned().collect()
+    }
+
+    pub fn get_region_from_index(&self, index: usize) -> Option<&Region> {
+        self.regions.values().nth(index)
+    }
+
+
 
 
     pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
@@ -267,6 +279,9 @@ mod tests {
     use std::io::Cursor;
     use quartz_nbt::io::{read_nbt, write_nbt};
     use super::*;
+
+
+
 
     #[test]
     fn test_schematic_operations() {

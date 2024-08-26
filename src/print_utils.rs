@@ -17,7 +17,7 @@ pub fn format_schematic(schematic: &UniversalSchematic) -> String {
     output.push_str(&format_metadata(&schematic.metadata));
     output.push_str("Regions:\n");
     for (name, region) in &schematic.regions {
-        output.push_str(&format_region(name, region, schematic));
+        output.push_str(&format_region(name, region));
     }
     output
 }
@@ -34,7 +34,7 @@ pub fn format_palette(palette: &Vec<BlockState>) -> String {
     output
 }
 
-pub fn format_region(name: &str, region: &Region, schematic: &UniversalSchematic) -> String {
+pub fn format_region(name: &str, region: &Region) -> String {
     let mut output = String::new();
     output.push_str(&format!("  Region: {}\n", name));
     output.push_str(&format!("    Position: {:?}\n", region.position));

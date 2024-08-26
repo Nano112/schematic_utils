@@ -12,14 +12,12 @@ pub struct Region {
     pub name: String,
     pub position: (i32, i32, i32),
     pub size: (i32, i32, i32),
-    pub(crate) blocks: Vec<usize>,
+    pub blocks: Vec<usize>,
     pub(crate) palette: Vec<BlockState>,
     pub entities: Vec<Entity>,
     #[serde(serialize_with = "serialize_block_entities")]
     pub block_entities: HashMap<(i32, i32, i32), BlockEntity>,
 }
-
-const  EXPAND_FACTOR: f64 = 1.5;
 
 
 fn serialize_block_entities<S>(
@@ -127,7 +125,6 @@ impl Region {
         self.size.0 as usize * self.size.1 as usize * self.size.2 as usize
     }
 
-    const EXPAND_FACTOR: f64 = 1.5;
 
     pub fn expand_to_fit(&mut self, x: i32, y: i32, z: i32) {
         let current_bounding_box = self.get_bounding_box();
@@ -138,7 +135,6 @@ impl Region {
         let new_bounding_box = current_bounding_box.union(&fit_position_bounding_box);
         let new_size = new_bounding_box.get_dimensions();
         let new_position = new_bounding_box.min;
-        //if the new size and position are the same, we don't need to do anything
         if new_size == self.size && new_position == self.position {
             return;
         }
@@ -155,24 +151,14 @@ impl Region {
     }
 
 
-    pub(crate) fn unpack_block_states(&mut self, packed_states: &[i64]) {
-        let bits_per_block = (self.palette.len() as f64).log2().ceil() as usize;
-        let blocks_per_long = 64 / bits_per_block;
-        let mask = (1 << bits_per_block) - 1;
 
-        self.blocks.clear();
-
-        for &long in packed_states {
-            for i in 0..blocks_per_long {
-                let block_id = (long >> (i * bits_per_block)) & mask;
-                self.blocks.push(block_id as usize);
-
-                if self.blocks.len() == self.volume() {
-                    return;
-                }
-            }
-        }
+    fn calculate_bits_per_block(&self) -> usize {
+        let palette_size = self.palette.len();
+        let bits_per_block = std::cmp::max((palette_size as f64).log2().ceil() as usize, 2);
+        bits_per_block
     }
+
+
 
     pub fn merge(&mut self, other: &Region) {
         let bounding_box = self.get_bounding_box().union(&other.get_bounding_box());
@@ -403,29 +389,92 @@ impl Region {
         region_nbt
     }
 
-    pub(crate) fn create_packed_block_states(&self) -> Vec<i64> {
-        let bits_per_block = (self.palette.len() as f64).log2().ceil() as usize;
-        let blocks_per_long = 64 / bits_per_block;
+    // Python implementation
+    // @staticmethod
+    // def from_nbt_long_array(arr: LongArray, size: int, nbits: int) -> 'LitematicaBitArray':
+    //     # TODO Test loading and validating from an external source
+    //     expected_len = ceil(size * nbits / 64)
+    //     if expected_len != len(arr):
+    //     raise ValueError(
+    //     "long array length does not match bit array size and nbits, expected {}, not {}".format(
+    //     expected_len, len(arr)
+    //     )
+    //     )
+    //     r = LitematicaBitArray(size, nbits)
+    //     m = (1 << 64) - 1
+    //     r.array = [int(i) & m for i in arr]  # Remove the infinite trailing 1s of negative numbers
+    //     return r
+    //
+    // def _to_long_list(self) -> list[int]:
+    //     list_of_longs = []
+    //     m1 = 1 << 63
+    //     m2 = (1 << 64) - 1
+    //     for i in self.array:
+    //     if i & m1 > 0:
+    //     i |= ~m2  # Add the potential infinite 1 prefix for negative numbers
+    //     list_of_longs.append(i)
+    //     return list_of_longs
+    //
+    // def _to_nbt_long_array(self) -> LongArray:
+    //     return nbtlib.tag.LongArray(self._to_long_list())
+
+    pub fn unpack_block_states(&self, packed_states: &[i64]) -> Vec<usize> {
+        let bits_per_block = self.calculate_bits_per_block();
         let mask = (1 << bits_per_block) - 1;
+        let volume = self.volume();
 
-        let mut packed_states = Vec::new();
-        let mut current_long = 0i64;
-        let mut blocks_in_current_long = 0;
+        let mut blocks = Vec::with_capacity(volume);
 
-        for block_id in &self.blocks {
-            current_long |= (*block_id as i64 & mask) << (blocks_in_current_long * bits_per_block);
-            blocks_in_current_long += 1;
+        for index in 0..volume {
+            let bit_index = index * bits_per_block;
+            let start_long_index = bit_index / 64;
+            let start_offset = bit_index % 64;
 
-            if blocks_in_current_long == blocks_per_long {
-                packed_states.push(current_long);
-                current_long = 0;
-                blocks_in_current_long = 0;
+            let value = if start_offset + bits_per_block <= 64 {
+                // Block is entirely within one long
+                ((packed_states[start_long_index] as u64) >> start_offset) & (mask as u64)
+            } else {
+                // Block spans two longs
+                let low_bits = ((packed_states[start_long_index] as u64) >> start_offset) & ((1 << (64 - start_offset)) - 1);
+                let high_bits = (packed_states[start_long_index + 1] as u64) & ((1 << (bits_per_block - (64 - start_offset))) - 1);
+                low_bits | (high_bits << (64 - start_offset))
+            };
+
+
+            blocks.push(value as usize);
+        }
+
+        blocks
+    }
+
+
+
+    pub(crate) fn create_packed_block_states(&self) -> Vec<i64> {
+        let bits_per_block = self.calculate_bits_per_block();
+        let size = self.blocks.len();
+        let expected_len = (size * bits_per_block + 63) / 64; // Equivalent to ceil(size * bits_per_block / 64)
+
+        let mut packed_states = vec![0i64; expected_len];
+        let mask = (1i64 << bits_per_block) - 1;
+
+        for (index, &block_state) in self.blocks.iter().enumerate() {
+            let bit_index = index * bits_per_block;
+            let start_long_index = bit_index / 64;
+            let end_long_index = (bit_index + bits_per_block - 1) / 64;
+            let start_offset = bit_index % 64;
+
+            let value = (block_state as i64) & mask;
+
+            if start_long_index == end_long_index {
+                packed_states[start_long_index] |= value << start_offset;
+            } else {
+                packed_states[start_long_index] |= value << start_offset;
+                packed_states[end_long_index] |= value >> (64 - start_offset);
             }
         }
 
-        if blocks_in_current_long > 0 {
-            packed_states.push(current_long);
-        }
+        // Handle negative numbers
+        packed_states.iter_mut().for_each(|x| *x = *x as u64 as i64);
 
         packed_states
     }
@@ -438,10 +487,7 @@ impl Region {
         palette
     }
 
-    fn calculate_bits_per_block(&self) -> usize {
-        let palette_size = self.palette.len();
-        std::cmp::max((palette_size as f64).log2().ceil() as usize, 2)
-    }
+
 
 
     pub fn count_block_types(&self) -> HashMap<BlockState, usize> {
@@ -466,6 +512,33 @@ impl Region {
 mod tests {
     use super::*;
     use crate::BlockState;
+
+    #[test]
+    fn test_pack_block_states_to_long_array() {
+        //array from 1 to 16
+        let blocks = (1..=16).collect::<Vec<usize>>();
+        let mut palette = vec![BlockState::new("minecraft:air".to_string())];
+        for i in 1..=16 {
+            palette.push(BlockState::new(format!("minecraft:wool{}", i)));
+        }
+        let mut region = Region {
+            name: "Test".to_string(),
+            position: (0, 0, 0),
+            size: (16, 1, 1),
+            blocks: blocks.clone(),
+            palette,
+            entities: Vec::new(),
+            block_entities: HashMap::new(),
+        };
+        let packed_states = region.create_packed_block_states();
+        assert_eq!(packed_states.len(), 2);
+        assert_eq!(packed_states, vec![-3013672028691362751, 33756]);
+
+        let unpacked_blocks = region.unpack_block_states(&packed_states);
+        assert_eq!(unpacked_blocks, blocks);
+    }
+
+
 
     #[test]
     fn test_region_creation() {

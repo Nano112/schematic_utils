@@ -175,8 +175,8 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
 
             // Parse BlockStates
             let block_states = region_nbt.get::<_, &[i64]>("BlockStates")?;
-            region.unpack_block_states(block_states);
-
+            // region.unpack_block_states(block_states);
+            region.blocks = region.unpack_block_states(block_states);
             // Parse Entities
             if let Ok(entities_list) = region_nbt.get::<_, &NbtList>("Entities") {
                 region.entities = entities_list.iter().filter_map(|tag| {
