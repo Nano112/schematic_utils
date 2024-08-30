@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
-
+use js_sys;
 mod universal_schematic;
 mod region;
 mod block_state;
@@ -69,26 +69,38 @@ impl SchematicWrapper {
         )
     }
 
-    // pub fn blocks(&self) -> Vec<BlockState> {
-    //     self.0.get_blocks()
-    // }
-    //
-    // pub fn get_dimensions(&self) -> Vec<i32> {
-    //     let (x, y, z) = self.0.get_dimensions();
-    //     vec![x, y, z]
-    // }
-    //
-    // pub fn get_block_count(&self) -> i32 {
-    //     self.0.total_blocks()
-    // }
-    //
-    // pub fn get_volume(&self) -> i32 {
-    //     self.0.total_volume()
-    // }
-    //
-    // pub fn get_region_names(&self) -> Vec<String> {
-    //     self.0.get_region_names()
-    // }
+    pub fn blocks(&self) -> JsValue {
+        let blocks = self.0.get_blocks();
+        let js_blocks: Vec<JsValue> = blocks.into_iter().map(|block| {
+            let obj = js_sys::Object::new();
+            js_sys::Reflect::set(&obj, &"name".into(), &block.name.into()).unwrap();
+            let properties = js_sys::Object::new();
+            for (key, value) in block.properties {
+                js_sys::Reflect::set(&properties, &key.into(), &value.into()).unwrap();
+            }
+            js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+            obj.into()
+        }).collect();
+        JsValue::from(js_sys::Array::from_iter(js_blocks))
+    }
+
+    // Add these methods back
+    pub fn get_dimensions(&self) -> Vec<i32> {
+        let (x, y, z) = self.0.get_dimensions();
+        vec![x, y, z]
+    }
+
+    pub fn get_block_count(&self) -> i32 {
+        self.0.total_blocks()
+    }
+
+    pub fn get_volume(&self) -> i32 {
+        self.0.total_volume()
+    }
+
+    pub fn get_region_names(&self) -> Vec<String> {
+        self.0.get_region_names()
+    }
 }
 
 #[wasm_bindgen]

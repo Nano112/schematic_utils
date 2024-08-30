@@ -280,6 +280,90 @@ impl UniversalSchematic {
         block_counts
     }
 
+    pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Vec<BlockPosition>> {
+        let mut chunks = Vec::new();
+        let (width, height, length) = self.get_dimensions();
+        let chunk_count_x = (width + chunk_width - 1) / chunk_width;
+        let chunk_count_y = (height + chunk_height - 1) / chunk_height;
+        let chunk_count_z = (length + chunk_length - 1) / chunk_length;
+
+        for x in 0..width {
+            for y in 0..height {
+                for z in 0..length {
+                    if let Some(block) = self.get_block(x, y, z) {
+                        let chunk_x = x / chunk_width;
+                        let chunk_y = y / chunk_height;
+                        let chunk_z = z / chunk_length;
+                        let chunk_index = (chunk_x + chunk_y * chunk_count_x + chunk_z * chunk_count_x * chunk_count_y) as usize;
+
+                        while chunks.len() <= chunk_index {
+                            chunks.push(Vec::new());
+                        }
+
+                        chunks[chunk_index].push(BlockPosition { x, y, z });
+                    }
+                }
+            }
+        }
+
+        chunks
+    }
+
+    pub fn get_occluded_faces_for_block(&self, x: i32, y: i32, z: i32) -> u8 {
+        let mut occluded_faces = 0u8;
+        let directions = [
+            (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)
+        ];
+
+        for (i, (dx, dy, dz)) in directions.iter().enumerate() {
+            let nx = x + dx;
+            let ny = y + dy;
+            let nz = z + dz;
+
+            if let Some(neighbor_block) = self.get_block(nx, ny, nz) {
+                if !self.is_transparent(&neighbor_block.name) && !self.is_non_occluding(&neighbor_block.name) {
+                    occluded_faces |= 1 << i;
+                }
+            }
+        }
+
+        occluded_faces
+    }
+
+    pub fn is_transparent(&self, block_type: &str) -> bool {
+        self.transparent_blocks.contains(block_type)
+    }
+
+    pub fn is_non_occluding(&self, block_type: &str) -> bool {
+        self.non_occluding_blocks.contains(block_type)
+    }
+
+    pub fn iter_blocks(&self) -> impl Iterator<Item = (BlockPosition, &BlockState)> {
+        self.regions.values().flat_map(|region| {
+            region.blocks.iter().enumerate().filter_map(move |(index, block_index)| {
+                let (x, y, z) = region.index_to_position(index);
+                Some((
+                    BlockPosition { x, y, z },
+                    &region.palette[*block_index as usize]
+                ))
+            })
+        })
+    }
+
+    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32)
+                       -> impl Iterator<Item = Vec<(BlockPosition, &BlockState)>>
+    {
+        let chunks = self.split_into_chunks(chunk_width, chunk_height, chunk_length);
+        chunks.into_iter().map(move |chunk| {
+            chunk.into_iter()
+                .filter_map(|pos| {
+                    self.get_block(pos.x, pos.y, pos.z)
+                        .map(|block| (pos, block))
+                })
+                .collect()
+        })
+    }
+
 
 }
 

@@ -369,6 +369,7 @@ dependencies = [
  "chrono",
  "criterion",
  "flate2",
+ "js-sys",
  "log",
  "num-complex",
  "quartz_nbt",
