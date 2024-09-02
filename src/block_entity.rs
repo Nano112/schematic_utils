@@ -66,9 +66,15 @@ impl BlockEntity {
     }
 
     pub fn from_nbt(nbt: &NbtCompound) -> Result<Self, String> {
-        let id = nbt.get::<_, &str>("id")
-            .map_err(|e| format!("Failed to get BlockEntity id: {}", e))?
-            .to_string();
+        // let id = nbt.get::<_, &str>("id")
+        //     .map_err(|e| format!("Failed to get BlockEntity id: {}", e))?
+        //     .to_string();
+
+        // print the entire nbt if it fails
+        let id = match nbt.get::<_, &str>("Id") {
+            Ok(id) => id.to_string(),
+            Err(e) => return Err(format!("Failed to get BlockEntity id: {}\n{}", e, nbt.to_string())),
+        };
 
         let position = match nbt.get::<_, &NbtTag>("Pos") {
             Ok(NbtTag::IntArray(arr)) if arr.len() == 3 => (arr[0], arr[1], arr[2]),
@@ -82,9 +88,20 @@ impl BlockEntity {
             _ => return Err("Invalid position data".to_string()),
         };
 
-        let nbt_data = nbt.get::<_, &NbtCompound>("NBT")
-            .map_err(|e| format!("Failed to get BlockEntity NBT data: {}", e))?;
         let mut nbt_map = HashMap::new();
+
+        // check if it has NBT data
+        if !nbt.contains_key("NBT") {
+            return Ok(BlockEntity {
+                id,
+                position,
+                nbt: nbt_map,
+            });
+        }
+        let nbt_data = match nbt.get::<_, &NbtCompound>("NBT") {
+            Ok(nbt_data) => nbt_data,
+            Err(e) => return Err(format!("Failed to get BlockEntity NBT data: {}\n{}", e, nbt.to_string())),
+        };
         for (key, value) in nbt_data.inner() {
             if let NbtTag::String(s) = value {
                 nbt_map.insert(key.clone(), s.clone());

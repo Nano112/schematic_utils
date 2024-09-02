@@ -17,17 +17,25 @@ pub use universal_schematic::UniversalSchematic;
 pub use block_state::BlockState;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic as print_schematic, format_json_schematic as print_json_schematic};
+use web_sys::console;
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    console::log_1(&"Sloinay sucks".into());
+}
 
 #[wasm_bindgen]
 pub struct SchematicWrapper(UniversalSchematic);
+
+
 
 #[wasm_bindgen]
 impl SchematicWrapper {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        console::log_1(&"SchematicWrapper created".into());
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
-
     pub fn from_litematic(&mut self, data: &[u8]) -> Result<(), JsValue> {
         self.0 = litematic::from_litematic(data)
             .map_err(|e| JsValue::from_str(&format!("Litematic parsing error: {}", e)))?;

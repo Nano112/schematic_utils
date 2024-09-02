@@ -15,7 +15,11 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
-
+struct BlockPosition {
+    x: i32,
+    y: i32,
+    z: i32,
+}
 
 impl UniversalSchematic {
     pub fn new(name: String) -> Self {
@@ -309,39 +313,14 @@ impl UniversalSchematic {
         chunks
     }
 
-    pub fn get_occluded_faces_for_block(&self, x: i32, y: i32, z: i32) -> u8 {
-        let mut occluded_faces = 0u8;
-        let directions = [
-            (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)
-        ];
 
-        for (i, (dx, dy, dz)) in directions.iter().enumerate() {
-            let nx = x + dx;
-            let ny = y + dy;
-            let nz = z + dz;
 
-            if let Some(neighbor_block) = self.get_block(nx, ny, nz) {
-                if !self.is_transparent(&neighbor_block.name) && !self.is_non_occluding(&neighbor_block.name) {
-                    occluded_faces |= 1 << i;
-                }
-            }
-        }
 
-        occluded_faces
-    }
-
-    pub fn is_transparent(&self, block_type: &str) -> bool {
-        self.transparent_blocks.contains(block_type)
-    }
-
-    pub fn is_non_occluding(&self, block_type: &str) -> bool {
-        self.non_occluding_blocks.contains(block_type)
-    }
 
     pub fn iter_blocks(&self) -> impl Iterator<Item = (BlockPosition, &BlockState)> {
         self.regions.values().flat_map(|region| {
             region.blocks.iter().enumerate().filter_map(move |(index, block_index)| {
-                let (x, y, z) = region.index_to_position(index);
+                let (x, y, z) = region.index_to_coords(index);
                 Some((
                     BlockPosition { x, y, z },
                     &region.palette[*block_index as usize]

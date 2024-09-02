@@ -389,35 +389,6 @@ impl Region {
         region_nbt
     }
 
-    // Python implementation
-    // @staticmethod
-    // def from_nbt_long_array(arr: LongArray, size: int, nbits: int) -> 'LitematicaBitArray':
-    //     # TODO Test loading and validating from an external source
-    //     expected_len = ceil(size * nbits / 64)
-    //     if expected_len != len(arr):
-    //     raise ValueError(
-    //     "long array length does not match bit array size and nbits, expected {}, not {}".format(
-    //     expected_len, len(arr)
-    //     )
-    //     )
-    //     r = LitematicaBitArray(size, nbits)
-    //     m = (1 << 64) - 1
-    //     r.array = [int(i) & m for i in arr]  # Remove the infinite trailing 1s of negative numbers
-    //     return r
-    //
-    // def _to_long_list(self) -> list[int]:
-    //     list_of_longs = []
-    //     m1 = 1 << 63
-    //     m2 = (1 << 64) - 1
-    //     for i in self.array:
-    //     if i & m1 > 0:
-    //     i |= ~m2  # Add the potential infinite 1 prefix for negative numbers
-    //     list_of_longs.append(i)
-    //     return list_of_longs
-    //
-    // def _to_nbt_long_array(self) -> LongArray:
-    //     return nbtlib.tag.LongArray(self._to_long_list())
-
     pub fn unpack_block_states(&self, packed_states: &[i64]) -> Vec<usize> {
         let bits_per_block = self.calculate_bits_per_block();
         let mask = (1 << bits_per_block) - 1;
