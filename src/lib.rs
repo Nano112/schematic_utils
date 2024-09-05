@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 use js_sys;
+use js_sys::Array;
+
 mod universal_schematic;
 mod region;
 mod block_state;
@@ -27,7 +29,12 @@ pub fn start() {
 #[wasm_bindgen]
 pub struct SchematicWrapper(UniversalSchematic);
 
-
+#[wasm_bindgen]
+pub struct BlockPosition {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
 
 #[wasm_bindgen]
 impl SchematicWrapper {
@@ -77,20 +84,6 @@ impl SchematicWrapper {
         )
     }
 
-    pub fn blocks(&self) -> JsValue {
-        let blocks = self.0.get_blocks();
-        let js_blocks: Vec<JsValue> = blocks.into_iter().map(|block| {
-            let obj = js_sys::Object::new();
-            js_sys::Reflect::set(&obj, &"name".into(), &block.name.into()).unwrap();
-            let properties = js_sys::Object::new();
-            for (key, value) in block.properties {
-                js_sys::Reflect::set(&properties, &key.into(), &value.into()).unwrap();
-            }
-            js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
-            obj.into()
-        }).collect();
-        JsValue::from(js_sys::Array::from_iter(js_blocks))
-    }
 
     // Add these methods back
     pub fn get_dimensions(&self) -> Vec<i32> {
@@ -108,6 +101,76 @@ impl SchematicWrapper {
 
     pub fn get_region_names(&self) -> Vec<String> {
         self.0.get_region_names()
+    }
+
+    pub fn blocks(&self) -> Array {
+        self.0.iter_blocks()
+            .map(|(pos, block)| {
+                let obj = js_sys::Object::new();
+                js_sys::Reflect::set(&obj, &"x".into(), &pos.x.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"y".into(), &pos.y.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"z".into(), &pos.z.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
+                let properties = js_sys::Object::new();
+                for (key, value) in &block.properties {
+                    js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                }
+                js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+                obj
+            })
+            .collect::<Array>()
+    }
+
+    pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Array {
+        self.0.iter_chunks(chunk_width, chunk_height, chunk_length)
+            .map(|chunk| {
+                chunk.into_iter()
+                    .map(|(pos, block)| {
+                        let obj = js_sys::Object::new();
+                        js_sys::Reflect::set(&obj, &"x".into(), &pos.x.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"y".into(), &pos.y.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"z".into(), &pos.z.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
+                        let properties = js_sys::Object::new();
+                        for (key, value) in &block.properties {
+                            js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                        }
+                        js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+                        obj
+                    })
+                    .collect::<Array>()
+            })
+            .collect::<Array>()
+    }
+
+
+}
+
+#[wasm_bindgen]
+pub struct BlockStateWrapper(BlockState);
+
+#[wasm_bindgen]
+impl BlockStateWrapper {
+    #[wasm_bindgen(constructor)]
+    pub fn new(name: &str) -> Self {
+        BlockStateWrapper(BlockState::new(name.to_string()))
+    }
+
+    pub fn with_property(&mut self, key: &str, value: &str) {
+        self.0 = self.0.clone().with_property(key.to_string(), value.to_string());
+    }
+
+    pub fn name(&self) -> String {
+        self.0.name.clone()
+    }
+
+    pub fn properties(&self) -> JsValue {
+        let properties = self.0.properties.clone();
+        let js_properties = js_sys::Object::new();
+        for (key, value) in properties {
+            js_sys::Reflect::set(&js_properties, &key.into(), &value.into()).unwrap();
+        }
+        js_properties.into()
     }
 }
 

@@ -15,10 +15,10 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
-struct BlockPosition {
-    x: i32,
-    y: i32,
-    z: i32,
+pub struct BlockPosition {
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) z: i32,
 }
 
 impl UniversalSchematic {
