@@ -17,36 +17,27 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    root.insert("Width", NbtTag::Short((width as i16).abs() ));
+    root.insert("Width", NbtTag::Short((width as i16).abs()));
     root.insert("Height", NbtTag::Short((height as i16).abs()));
     root.insert("Length", NbtTag::Short((length as i16).abs()));
 
     root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
 
-
     let offset = vec![0, 0, 0];
     root.insert("Offset", NbtTag::IntArray(offset));
 
-
     let merged_region = schematic.get_merged_region();
 
-    root.insert("Palette", convert_palette(&merged_region.palette).0);
-    root.insert("PaletteMax", convert_palette(&merged_region.palette).1);
+    let (palette_nbt, palette_max) = convert_palette(&merged_region.palette);
+    root.insert("Palette", palette_nbt);
+    root.insert("PaletteMax", NbtTag::Int(palette_max));
 
-    let block_data: Vec<u8> = merged_region.blocks.iter()
-        .flat_map(|&block_id| encode_varint(block_id as u32))
+    let block_data: Vec<u8> = merged_region.iter_blocks()
+        .flat_map(|(_, block)| {
+            let block_id = merged_region.palette.iter().position(|b| b == block).unwrap() as u32;
+            encode_varint(block_id)
+        })
         .collect();
-
-
-    //attempt to decode the block data for debug since it's buggy
-    let mut reader = Cursor::new(block_data.clone());
-    let mut decoded_data = Vec::new();
-    while reader.position() < block_data.len() as u64 {
-        let value = decode_varint(&mut reader)?;
-        decoded_data.push(value);
-    }
-    // println!("Decoded Data: {:?}", decoded_data);
-    // println!("Decoded Data Length: {:?}", decoded_data.len());
 
     root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
@@ -69,16 +60,12 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     Ok(encoder.finish()?)
 }
 
-
-
-
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
     decoder.read_to_end(&mut decompressed)?;
 
     let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
-
 
     let name = if let Some(metadata) = root.get::<_, &NbtCompound>("Metadata").ok() {
         metadata.get::<_, &str>("Name").ok().map(|s| s.to_string())
@@ -91,18 +78,25 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let mut schematic = UniversalSchematic::new(name);
     schematic.metadata.mc_version = mc_version;
 
-    let width = root.get::<_, i16>("Width")? as u32;
-    let height = root.get::<_, i16>("Height")? as u32;
-    let length = root.get::<_, i16>("Length")? as u32;
+    let width = root.get::<_, i16>("Width")? as i32;
+    let height = root.get::<_, i16>("Height")? as i32;
+    let length = root.get::<_, i16>("Length")? as i32;
 
     let palette = parse_palette(&root)?;
 
-    let block_data = parse_block_data(&root, width, height, length)?;
+    let block_data = parse_block_data(&root, width as u32, height as u32, length as u32)?;
 
-    let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
+    let mut region = Region::new("Main".to_string(), (0, 0, 0), (width, height, length));
     region.palette = palette;
 
-    region.blocks = block_data.iter().map(|&x| x as usize).collect();
+    // Populate chunks
+    for (index, &block_id) in block_data.iter().enumerate() {
+        let x = (index as i32) % width;
+        let y = ((index as i32) / width) % height;
+        let z = (index as i32) / (width * height);
+        let block_state = &region.palette[block_id as usize];
+        region.set_block(x, y, z, block_state.clone());
+    }
 
     let block_entities = parse_block_entities(&root)?;
     for block_entity in block_entities {
@@ -117,8 +111,6 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     schematic.add_region(region);
     Ok(schematic)
 }
-
-
 
 fn convert_block_entities(region: &Region) -> NbtList {
     let mut block_entities = NbtList::new();
@@ -241,12 +233,10 @@ fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u
 
 
     let mut reader = Cursor::new(block_data_u8);
-    let mut total_read = 0;
     while reader.position() < block_data_i8.len() as u64 {
         match decode_varint(&mut reader) {
             Ok(value) => {
                 block_data.push(value);
-                total_read += 1;
             },
             Err(e) => {
                 println!("Error decoding varint at position {}: {:?}", reader.position(), e);

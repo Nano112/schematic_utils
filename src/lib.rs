@@ -1,5 +1,4 @@
 use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
 use js_sys;
 use js_sys::Array;
 
@@ -8,11 +7,11 @@ mod region;
 mod block_state;
 mod entity;
 mod block_entity;
-mod utils;
 mod formats;
 mod print_utils;
 mod bounding_box;
 mod metadata;
+mod chunk_section;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;

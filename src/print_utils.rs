@@ -26,7 +26,7 @@ pub fn get_schematic_json(schematic: &UniversalSchematic) -> String {
     schematic.get_json_string().unwrap_or_else(|e| format!("Failed to serialize: {}", e))
 }
 
-pub fn format_palette(palette: &Vec<BlockState>) -> String {
+pub fn _format_palette(palette: &Vec<BlockState>) -> String {
     let mut output = String::from("Palette:\n");
     for (i, block) in palette.iter().enumerate() {
         output.push_str(&format!("  {}: {}\n", i, block.name));
@@ -40,12 +40,12 @@ pub fn format_region(name: &str, region: &Region) -> String {
     output.push_str(&format!("    Position: {:?}\n", region.position));
     output.push_str(&format!("    Size: {:?}\n", region.size));
     output.push_str("    Blocks:\n");
-    for i in 0..region.blocks.len() {
-        let block_palette_index = region.blocks[i];
-        let block_position = region.index_to_coords(i);
-        let block_state = region.palette.get(block_palette_index as usize).unwrap();
+
+    for (block_position, block_state) in region.iter_blocks() {
+        let block_palette_index = region.palette.iter().position(|b| b == block_state).unwrap_or(0);
         output.push_str(&format!("      {} @ {:?}: {:?}\n", block_palette_index, block_position, block_state));
     }
+
     output
 }
 

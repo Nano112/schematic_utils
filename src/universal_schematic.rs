@@ -15,6 +15,7 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
+#[derive(Debug)]
 pub struct BlockPosition {
     pub(crate) x: i32,
     pub(crate) y: i32,
@@ -56,16 +57,6 @@ impl UniversalSchematic {
         None
     }
 
-    pub fn get_blocks(&self) -> Vec<BlockState> {
-        let mut blocks: Vec<BlockState> = Vec::new();
-        for region in self.regions.values() {
-            let region_palette = region.get_palette();
-            for block_index in &region.blocks {
-                blocks.push(region_palette[*block_index as usize].clone());
-            }
-        }
-        blocks
-    }
 
     pub fn get_region_names(&self) -> Vec<String> {
         self.regions.keys().cloned().collect()
@@ -289,12 +280,12 @@ impl UniversalSchematic {
         let (width, height, length) = self.get_dimensions();
         let chunk_count_x = (width + chunk_width - 1) / chunk_width;
         let chunk_count_y = (height + chunk_height - 1) / chunk_height;
-        let chunk_count_z = (length + chunk_length - 1) / chunk_length;
+        // let chunk_count_z = (length + chunk_length - 1) / chunk_length;
 
         for x in 0..width {
             for y in 0..height {
                 for z in 0..length {
-                    if let Some(block) = self.get_block(x, y, z) {
+                    if let Some(_) = self.get_block(x, y, z) {
                         let chunk_x = x / chunk_width;
                         let chunk_y = y / chunk_height;
                         let chunk_z = z / chunk_length;
@@ -314,34 +305,43 @@ impl UniversalSchematic {
     }
 
 
-
-
-
-    pub fn iter_blocks(&self) -> impl Iterator<Item = (BlockPosition, &BlockState)> {
-        self.regions.values().flat_map(|region| {
-            region.blocks.iter().enumerate().filter_map(move |(index, block_index)| {
-                let (x, y, z) = region.index_to_coords(index);
-                Some((
-                    BlockPosition { x, y, z },
-                    &region.palette[*block_index as usize]
-                ))
+        pub fn iter_blocks(&self) -> impl Iterator<Item = (BlockPosition, &BlockState)> {
+            self.regions.values().flat_map(|region| {
+                region.iter_blocks()
             })
-        })
-    }
+        }
 
-    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32)
-                       -> impl Iterator<Item = Vec<(BlockPosition, &BlockState)>>
-    {
-        let chunks = self.split_into_chunks(chunk_width, chunk_height, chunk_length);
-        chunks.into_iter().map(move |chunk| {
-            chunk.into_iter()
-                .filter_map(|pos| {
-                    self.get_block(pos.x, pos.y, pos.z)
-                        .map(|block| (pos, block))
+        pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32)
+                           -> impl Iterator<Item = Vec<(BlockPosition, &BlockState)>>
+        {
+            let (width, height, length) = self.get_dimensions();
+            let chunk_count_x = (width + chunk_width - 1) / chunk_width;
+            let chunk_count_y = (height + chunk_height - 1) / chunk_height;
+            let chunk_count_z = (length + chunk_length - 1) / chunk_length;
+
+            (0..chunk_count_y).flat_map(move |chunk_y| {
+                (0..chunk_count_z).flat_map(move |chunk_z| {
+                    (0..chunk_count_x).map(move |chunk_x| {
+                        let start_x = chunk_x * chunk_width;
+                        let start_y = chunk_y * chunk_height;
+                        let start_z = chunk_z * chunk_length;
+                        let end_x = (start_x + chunk_width).min(width);
+                        let end_y = (start_y + chunk_height).min(height);
+                        let end_z = (start_z + chunk_length).min(length);
+
+                        (start_x..end_x).flat_map(move |x| {
+                            (start_y..end_y).flat_map(move |y| {
+                                (start_z..end_z).filter_map(move |z| {
+                                    self.get_block(x, y, z).map(|block| {
+                                        (BlockPosition { x, y, z }, block)
+                                    })
+                                })
+                            })
+                        }).collect()
+                    })
                 })
-                .collect()
-        })
-    }
+            })
+        }
 
 
 }
@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(schematic.get_block(5, 5, 5), Some(&dirt));
 
         // Check that the default region was created and expanded
-        let default_region = schematic.get_region("Main").unwrap();
+        // let default_region = schematic.get_region("Main").unwrap();
 
         // Test explicit region creation and manipulation
         let obsidian = BlockState::new("minecraft:obsidian".to_string());

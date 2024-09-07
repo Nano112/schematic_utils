@@ -38,20 +38,32 @@ impl BoundingBox {
         }
     }
 
-    pub fn coords_to_index(&self, x: i32, y: i32, z: i32) -> usize {
-        let (width, _, length) = self.get_dimensions();
+    pub fn coords_to_index(&self, x: i32, y: i32, z: i32) -> Result<usize, &'static str> {
+        if !self.contains((x, y, z)) {
+            return Err("Coordinates out of bounds");
+        }
+        let (width, height, length) = self.get_dimensions();
         let dx = x - self.min.0;
         let dy = y - self.min.1;
         let dz = z - self.min.2;
-        (dx + dz * width + dy * width * length) as usize
+        Ok((dx + dy * width + dz * width * height) as usize)
     }
 
     pub fn index_to_coords(&self, index: usize) -> (i32, i32, i32) {
-        let (width, _, length) = self.get_dimensions();
-        let dx = (index % width as usize) as i32;
-        let dy = (index / (width * length) as usize) as i32;
-        let dz = ((index / width as usize) % length as usize) as i32;
-        (dx + self.min.0, dy + self.min.1, dz + self.min.2)
+        let (width, height, _) = self.get_dimensions();
+        let width = width as usize;
+        let height = height as usize;
+
+        let z = index / (width * height);
+        let rem = index % (width * height);
+        let y = rem / width;
+        let x = rem % width;
+
+        (
+            x as i32 + self.min.0,
+            y as i32 + self.min.1,
+            z as i32 + self.min.2,
+        )
     }
 
     pub fn get_dimensions(&self) -> (i32, i32, i32) {

@@ -139,12 +139,10 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
     let regions = root.get::<_, &NbtCompound>("Regions")?;
     let mut loop_count = 0;
     for (name, region_tag) in regions.inner() {
-        //if it's the first region we want to override the default region name
         if loop_count == 0 {
             schematic.default_region_name = name.clone();
         }
         loop_count += 1;
-
 
         if let NbtTag::Compound(region_nbt) = region_tag {
             let position = region_nbt.get::<_, &NbtCompound>("Position")?;
@@ -175,8 +173,18 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
 
             // Parse BlockStates
             let block_states = region_nbt.get::<_, &[i64]>("BlockStates")?;
-            // region.unpack_block_states(block_states);
-            region.blocks = region.unpack_block_states(block_states);
+            let unpacked_blocks = region.unpack_block_states(block_states);
+
+            // Set blocks in the region
+            let (width, height, length) = size;
+            for (index, &block_id) in unpacked_blocks.iter().enumerate() {
+                let x = (index as i32) % width;
+                let y = ((index as i32) / width) % height;
+                let z = (index as i32) / (width * height);
+                let block_state = &region.palette[block_id as usize];
+                region.set_block(x, y, z, block_state.clone());
+            }
+
             // Parse Entities
             if let Ok(entities_list) = region_nbt.get::<_, &NbtList>("Entities") {
                 region.entities = entities_list.iter().filter_map(|tag| {
@@ -210,7 +218,6 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
 mod tests {
     use std::fs::File;
     use std::io::Write;
-    use num_complex::Complex;
     use super::*;
     use crate::{UniversalSchematic, BlockState};
 
@@ -242,7 +249,7 @@ mod tests {
         let mut region = Region::new("TestRegion".to_string(), (0, 0, 0), (2, 2, 2));
 
         let stone = BlockState::new("minecraft:stone".to_string());
-        let air = BlockState::new("minecraft:air".to_string());
+        // let air = BlockState::new("minecraft:air".to_string());
 
         region.set_block(0, 0, 0, stone.clone());
         region.set_block(1, 1, 1, stone.clone());
@@ -365,7 +372,7 @@ mod tests {
         file.write_all(&litematic_data).expect("Failed to write to file");
 
         // Read the .litematic file back
-        let loaded_litematic_data = std::fs::read("simple_cube.litematic").expect("Failed to read file");
+        // let loaded_litematic_data = std::fs::read("simple_cube.litematic").expect("Failed to read file");
 
 
         // Clean up the generated file
@@ -378,7 +385,7 @@ mod tests {
         let mut region = Region::new("TestRegion".to_string(), (0, 0, 0), (2, 2, 2));
 
         let stone = BlockState::new("minecraft:stone".to_string());
-        let air = BlockState::new("minecraft:air".to_string());
+        // let air = BlockState::new("minecraft:air".to_string());
 
         region.set_block(0, 0, 0, stone.clone());
         region.set_block(1, 1, 1, stone.clone());
