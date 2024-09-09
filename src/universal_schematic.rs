@@ -8,13 +8,14 @@ use crate::entity::Entity;
 use crate::metadata::Metadata;
 use crate::region::Region;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct UniversalSchematic {
     pub metadata: Metadata,
     pub regions: HashMap<String, Region>,
     pub default_region_name: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct BlockPosition {
     pub(crate) x: i32,
     pub(crate) y: i32,
@@ -54,6 +55,30 @@ impl UniversalSchematic {
             }
         }
         None
+    }
+
+    pub fn get_block_entity(&self, position: BlockPosition) -> Option<&BlockEntity> {
+        for region in self.regions.values() {
+            if region.get_bounding_box().contains((position.x, position.y, position.z)) {
+                return region.get_block_entity(position);
+            }
+        }
+        None
+    }
+
+    pub fn set_block_entity(&mut self, position: BlockPosition, block_entity: BlockEntity) -> bool {
+        let region_name = self.default_region_name.clone();
+        self.set_block_entity_in_region(&region_name, position, block_entity)
+    }
+
+    pub fn set_block_entity_in_region(&mut self, region_name: &str, position: BlockPosition, block_entity: BlockEntity) -> bool {
+        let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
+            Region::new(region_name.to_string(), (position.x, position.y, position.z), (1, 1, 1))
+        });
+
+        region.set_block_entity(position, block_entity)
+
+
     }
 
     pub fn get_blocks(&self) -> Vec<BlockState> {
@@ -289,12 +314,12 @@ impl UniversalSchematic {
         let (width, height, length) = self.get_dimensions();
         let chunk_count_x = (width + chunk_width - 1) / chunk_width;
         let chunk_count_y = (height + chunk_height - 1) / chunk_height;
-        let chunk_count_z = (length + chunk_length - 1) / chunk_length;
+        // let chunk_count_z = (length + chunk_length - 1) / chunk_length;
 
         for x in 0..width {
             for y in 0..height {
                 for z in 0..length {
-                    if let Some(block) = self.get_block(x, y, z) {
+                    if let Some(_) = self.get_block(x, y, z) {
                         let chunk_x = x / chunk_width;
                         let chunk_y = y / chunk_height;
                         let chunk_z = z / chunk_length;

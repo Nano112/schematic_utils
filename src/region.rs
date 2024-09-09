@@ -6,6 +6,7 @@ use crate::{ BlockState};
 use crate::block_entity::BlockEntity;
 use crate::bounding_box::BoundingBox;
 use crate::entity::Entity;
+use crate::universal_schematic::BlockPosition;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Region {
@@ -70,6 +71,14 @@ impl Region {
         true
     }
 
+    pub fn set_block_entity(&mut self, position: BlockPosition, block_entity: BlockEntity) -> bool {
+        self.block_entities.insert((position.x, position.y, position.z), block_entity);
+        true
+    }
+
+    pub fn get_block_entity(&self, position: BlockPosition) -> Option<&BlockEntity> {
+        self.block_entities.get(&(position.x, position.y, position.z))
+    }
     pub fn get_bounding_box(&self) -> BoundingBox {
         BoundingBox::from_position_and_size(self.position, self.size)
     }
@@ -139,7 +148,6 @@ impl Region {
             return;
         }
         let mut new_blocks = vec![0; new_bounding_box.volume() as usize];
-        let new_palette = self.palette.clone();
         for index in 0..self.blocks.len() {
             let (x, y, z) = self.index_to_coords(index);
             let new_index = new_bounding_box.coords_to_index(x, y, z);

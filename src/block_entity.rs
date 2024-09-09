@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use nbt::Value;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +64,27 @@ impl BlockEntity {
         compound.insert("NBT", NbtTag::Compound(nbt_data));
 
         NbtTag::Compound(compound)
+    }
+
+
+    pub fn to_hematite_nbt(&self) -> HashMap<String, Value> {
+        let mut compound = HashMap::new();
+        compound.insert("id".to_string(), Value::String(self.id.clone()));
+
+        let pos_list = vec![
+            Value::Int(self.position.0),
+            Value::Int(self.position.1),
+            Value::Int(self.position.2)
+        ];
+        compound.insert("Pos".to_string(), Value::List(pos_list));
+
+        let mut nbt_data = HashMap::new();
+        for (key, value) in &self.nbt {
+            nbt_data.insert(key.clone(), Value::String(value.clone()));
+        }
+        compound.insert("NBT".to_string(), Value::Compound(nbt_data));
+
+        compound
     }
 
     pub fn from_nbt(nbt: &NbtCompound) -> Result<Self, String> {

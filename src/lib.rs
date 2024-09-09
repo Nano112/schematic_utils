@@ -1,5 +1,4 @@
 use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
 use js_sys;
 use js_sys::Array;
 
@@ -13,6 +12,7 @@ mod formats;
 mod print_utils;
 mod bounding_box;
 mod metadata;
+mod mchprs_world;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;

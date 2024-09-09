@@ -50,6 +50,10 @@ impl BlockState {
         self
     }
 
+    pub fn with_properties(mut self, properties: HashMap<String, String>) -> Self {
+        self.properties = properties;
+        self
+    }
     pub fn to_nbt(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
         compound.insert("Name", self.name.clone());

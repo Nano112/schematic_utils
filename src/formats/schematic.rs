@@ -241,12 +241,10 @@ fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u
 
 
     let mut reader = Cursor::new(block_data_u8);
-    let mut total_read = 0;
     while reader.position() < block_data_i8.len() as u64 {
         match decode_varint(&mut reader) {
             Ok(value) => {
                 block_data.push(value);
-                total_read += 1;
             },
             Err(e) => {
                 println!("Error decoding varint at position {}: {:?}", reader.position(), e);
