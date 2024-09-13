@@ -4,9 +4,34 @@ use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use std::io::{Cursor, Read};
+use quartz_nbt::io::Flavor;
 use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
 use crate::region::Region;
+
+
+pub fn is_schematic(data: &[u8]) -> bool {
+    // Decompress the data
+    let mut decoder = GzDecoder::new(data);
+    let mut decompressed = Vec::new();
+    if decoder.read_to_end(&mut decompressed).is_err() {
+        return false;
+    }
+
+    // Read the NBT data
+    let (root, _) = match quartz_nbt::io::read_nbt(&mut Cursor::new(decompressed), Flavor::Uncompressed) {
+        Ok(result) => result,
+        Err(_) => return false,
+    };
+
+    // Check for required fields as per the Sponge Schematic Specification
+    root.get::<_, i32>("Version").is_ok() &&
+        root.get::<_, i32>("DataVersion").is_ok() &&
+        root.get::<_, i16>("Width").is_ok() &&
+        root.get::<_, i16>("Height").is_ok() &&
+        root.get::<_, i16>("Length").is_ok() &&
+        root.get::<_, &Vec<i8>>("BlockData").is_ok()
+}
 
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
@@ -123,12 +148,8 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 fn convert_block_entities(region: &Region) -> NbtList {
     let mut block_entities = NbtList::new();
 
-    for (pos, block_entity) in &region.block_entities {
-        let mut nbt = block_entity.to_nbt();
-        if let NbtTag::Compound(compound) = &mut nbt {
-            compound.insert("Pos", NbtTag::IntArray(vec![pos.0, pos.1, pos.2]));
-        }
-        block_entities.push(nbt);
+    for (_, block_entity) in &region.block_entities {
+        block_entities.push(block_entity.to_nbt());
     }
 
     block_entities
@@ -271,7 +292,8 @@ fn parse_block_entities(region_tag: &NbtCompound) -> Result<Vec<BlockEntity>, Bo
 
     for tag in block_entities_list.iter() {
         if let NbtTag::Compound(compound) = tag {
-            block_entities.push(BlockEntity::from_nbt(compound)?);
+            let block_entity = BlockEntity::from_nbt(compound);
+            block_entities.push(block_entity);
         }
     }
 
@@ -298,8 +320,10 @@ fn parse_entities(region_tag: &NbtCompound) -> Result<Vec<Entity>, Box<dyn std::
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::fs::File;
     use std::io::Write;
+    use std::path::Path;
     use super::*;
     use crate::{UniversalSchematic, BlockState};
 
@@ -404,5 +428,18 @@ mod tests {
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 0);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 1);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 2);
+    }
+
+
+    #[test]
+    fn test_import_new_chest_test_schem() {
+        let name = "new_chest_test";
+        let input_path_str = format!("tests/samples/{}.schem", name);
+        let schem_path = Path::new(&input_path_str);
+        assert!(schem_path.exists(), "Sample .schem file not found");
+        let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+
+        let mut schematic = from_schematic(&schem_data).expect("Failed to parse schematic");
+        assert_eq!(schematic.metadata.name, Some("Unnamed".to_string()));
     }
 }

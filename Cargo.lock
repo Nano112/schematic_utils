@@ -66,18 +66,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bitvec"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bc2832c24239b0141d5674bb9174f9d68a8b5b3f2753311927c172ca46f7e9c"
-dependencies = [
- "funty",
- "radium",
- "tap",
- "wyz",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -335,12 +323,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "funty"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
-
-[[package]]
 name = "half"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -489,7 +471,6 @@ dependencies = [
 [[package]]
 name = "mchprs_blocks"
 version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "hematite-nbt",
  "mchprs_proc_macros",
@@ -498,23 +479,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "mchprs_network"
-version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
-dependencies = [
- "bitvec",
- "byteorder",
- "flate2",
- "hematite-nbt",
- "mchprs_text",
- "serde",
- "tracing",
-]
-
-[[package]]
 name = "mchprs_proc_macros"
 version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -523,7 +489,6 @@ dependencies = [
 [[package]]
 name = "mchprs_redpiler"
 version = "0.1.0"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "enum_dispatch",
  "itertools 0.13.0",
@@ -541,7 +506,6 @@ dependencies = [
 [[package]]
 name = "mchprs_redstone"
 version = "0.1.0"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "mchprs_blocks",
  "mchprs_world",
@@ -550,30 +514,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "mchprs_text"
-version = "0.1.0"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
-dependencies = [
- "once_cell",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "mchprs_utils"
 version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 
 [[package]]
 name = "mchprs_world"
 version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "hematite-nbt",
  "itertools 0.13.0",
  "mchprs_blocks",
- "mchprs_network",
  "rustc-hash",
  "serde",
 ]
@@ -764,12 +714,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "radium"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
-
-[[package]]
 name = "rayon"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -792,7 +736,6 @@ dependencies = [
 [[package]]
 name = "redpiler_graph"
 version = "0.4.1"
-source = "git+https://github.com/MCHPR/MCHPRS.git#62748dab10d2429eb55405d3dc2f598df6950ca4"
 dependencies = [
  "bincode",
  "serde",
@@ -954,12 +897,6 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
-
-[[package]]
-name = "tap"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "thiserror"
@@ -1316,12 +1253,3 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
-
-[[package]]
-name = "wyz"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
-dependencies = [
- "tap",
-]

@@ -17,14 +17,16 @@ flate2 = "1.0.32"
 log = "0.4.22"
 js-sys = "0.3.70"
 console = "0.15.8"
-mchprs_redpiler = { git = "https://github.com/MCHPR/MCHPRS.git" }
-mchprs_redstone = { git = "https://github.com/MCHPR/MCHPRS.git" }
-mchprs_world = { git = "https://github.com/MCHPR/MCHPRS.git" }
-mchprs_blocks = { git = "https://github.com/MCHPR/MCHPRS.git" }
+mchprs_redpiler = { path = "/home/harrison/RustroverProjects/MCHPRS/crates/redpiler" }
+mchprs_redstone = { path = "/home/harrison/RustroverProjects/MCHPRS/crates/redstone" }
+mchprs_world = { path = "/home/harrison/RustroverProjects/MCHPRS/crates/world", default-features = false }
+mchprs_blocks = { path = "/home/harrison/RustroverProjects/MCHPRS/crates/blocks" }
 mc_schems = { git = "https://github.com/StackDoubleFlow/mc_schems.git" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hematite-nbt = "*"
 tracing = "0.1.40"
+
+
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }

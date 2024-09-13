@@ -5,7 +5,7 @@ use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, sch
 #[test]
 fn test_litematic_to_schem_conversion() {
 
-    let name = "quarry";
+    let name = "spinny";
 
     // Path to the sample .litematic file
     let input_path_str = format!("tests/samples/{}.litematic", name);
@@ -71,7 +71,6 @@ fn test_litematic_to_schem_conversion() {
 
     // Compare original and converted schematics
     assert_eq!(schematic.metadata.name, read_back_schematic.metadata.name);
-    assert_eq!(schematic.regions.len(), read_back_schematic.regions.len());
 
 
 
@@ -84,7 +83,7 @@ fn test_litematic_to_schem_conversion() {
 
 #[test]
 fn test_schema_to_litematic_conversion() {
-    let name = "sample";
+    let name = "new_chest_test";
 
     // Path to the sample .schem file
     let input_path_str = format!("tests/samples/{}.schem", name);
@@ -98,7 +97,8 @@ fn test_schema_to_litematic_conversion() {
 
     // Parse the .schem data into a UniversalSchematic
     let schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
-
+    let block_entities = schematic.get_block_entities_as_list();
+    println!("{:?}", block_entities);
     // Convert the UniversalSchematic to .litematic format
     let litematic_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
 

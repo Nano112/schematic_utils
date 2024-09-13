@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeMap;
 use crate::{ BlockState};
 use crate::block_entity::BlockEntity;
+use crate::block_position::BlockPosition;
 use crate::bounding_box::BoundingBox;
 use crate::entity::Entity;
-use crate::universal_schematic::BlockPosition;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Region {
@@ -16,10 +16,9 @@ pub struct Region {
     pub blocks: Vec<usize>,
     pub(crate) palette: Vec<BlockState>,
     pub entities: Vec<Entity>,
-    #[serde(serialize_with = "serialize_block_entities")]
+    #[serde(serialize_with = "serialize_block_entities", deserialize_with = "deserialize_block_entities")]
     pub block_entities: HashMap<(i32, i32, i32), BlockEntity>,
 }
-
 
 fn serialize_block_entities<S>(
     block_entities: &HashMap<(i32, i32, i32), BlockEntity>,
@@ -28,14 +27,25 @@ fn serialize_block_entities<S>(
 where
     S: Serializer,
 {
-    let mut map = serializer.serialize_map(Some(block_entities.len()))?;
-    for (key, value) in block_entities {
-        let key_str = format!("{},{},{}", key.0, key.1, key.2);
-        map.serialize_entry(&key_str, value)?;
-    }
-    map.end()
+    let block_entities_vec: Vec<&BlockEntity> = block_entities.values().collect();
+    block_entities_vec.serialize(serializer)
 }
 
+fn deserialize_block_entities<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<(i32, i32, i32), BlockEntity>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let block_entities_vec: Vec<BlockEntity> = Vec::deserialize(deserializer)?;
+    Ok(block_entities_vec
+        .into_iter()
+        .map(|be| {
+            let pos = (be.position.0 as i32, be.position.1 as i32, be.position.2 as i32);
+            (pos, be)
+        })
+        .collect())
+}
 impl Region {
     pub fn new(name: String, position: (i32, i32, i32), size: (i32, i32, i32)) -> Self {
         let bounding_box = BoundingBox::from_position_and_size(position, size);
@@ -54,6 +64,10 @@ impl Region {
         }
     }
 
+
+    pub fn get_block_entities_as_list(&self) -> Vec<BlockEntity> {
+        self.block_entities.values().cloned().collect()
+    }
 
     pub fn is_in_region(&self, x: i32, y: i32, z: i32) -> bool {
         let bounding_box = self.get_bounding_box();
@@ -353,7 +367,7 @@ impl Region {
                     .map(|s| s.parse::<i32>().unwrap())
                     .collect();
                 if coords.len() == 3 {
-                    if let Ok(block_entity) = BlockEntity::from_nbt(be_compound) {
+                    if let block_entity = BlockEntity::from_nbt(be_compound) {
                         block_entities.insert((coords[0], coords[1], coords[2]), block_entity);
                     }
                 }
@@ -391,8 +405,8 @@ impl Region {
         region_nbt.insert("Entities", NbtTag::List(entities_nbt));
 
         // 5. TileEntities
-        let tile_entities_nbt = NbtList::from(self.block_entities.values().map(|be| be.to_nbt()).collect::<Vec<NbtTag>>());
-        region_nbt.insert("TileEntities", NbtTag::List(tile_entities_nbt));
+        // TODO: Implement BlockEntity to NbtTag conversion
+        region_nbt.insert("TileEntities", NbtTag::List(NbtList::new()));
 
         region_nbt
     }
@@ -488,6 +502,9 @@ impl Region {
     pub fn get_palette_index(&self, block: &BlockState) -> Option<usize> {
         self.palette.iter().position(|b| b == block)
     }
+
+
+
 }
 
 #[cfg(test)]

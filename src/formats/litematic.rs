@@ -1,10 +1,33 @@
+use std::io::{Cursor, Read};
 use quartz_nbt::{NbtCompound, NbtTag, NbtList};
 use std::time::{SystemTime, UNIX_EPOCH};
+use flate2::read::GzDecoder;
+use quartz_nbt::io::Flavor;
 use crate::{UniversalSchematic, BlockState};
 use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
 use crate::region::Region;
 
+
+pub fn is_litematic(data: &[u8]) -> bool {
+    // Decompress the data
+    let mut decoder = GzDecoder::new(data);
+    let mut decompressed = Vec::new();
+    if decoder.read_to_end(&mut decompressed).is_err() {
+        return false;
+    }
+
+    // Read the NBT data
+    let (root, _) = match quartz_nbt::io::read_nbt(&mut Cursor::new(decompressed), Flavor::Uncompressed) {
+        Ok(result) => result,
+        Err(_) => return false,
+    };
+
+    // Check for required fields as per the Litematic format
+    root.get::<_, i32>("Version").is_ok() &&
+        root.get::<_, &NbtCompound>("Metadata").is_ok() &&
+        root.get::<_, &NbtCompound>("Regions").is_ok()
+}
 pub fn to_litematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
 
@@ -107,8 +130,11 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
         region_nbt.insert("Entities", NbtTag::List(entities));
 
         // TileEntities
-        let tile_entities = NbtList::from(region.block_entities.values().map(|be| be.to_nbt()).collect::<Vec<NbtTag>>());
+        let tile_entities = NbtList::from(region.block_entities.values().map(|block_entity| {
+            NbtTag::Compound(block_entity.to_nbt())
+        }).collect::<Vec<NbtTag>>());
         region_nbt.insert("TileEntities", NbtTag::List(tile_entities));
+
 
         // PendingBlockTicks and PendingFluidTicks (not fully supported, using empty lists)
         region_nbt.insert("PendingBlockTicks", NbtTag::List(NbtList::new()));
@@ -192,7 +218,7 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
             if let Ok(tile_entities_list) = region_nbt.get::<_, &NbtList>("TileEntities") {
                 for tag in tile_entities_list.iter() {
                     if let NbtTag::Compound(compound) = tag {
-                        if let Ok(block_entity) = BlockEntity::from_nbt(compound) {
+                        if let block_entity = BlockEntity::from_nbt(compound) {
                             region.block_entities.insert(block_entity.position, block_entity);
                         }
                     }

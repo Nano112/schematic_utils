@@ -3,6 +3,7 @@ use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
 use crate::{ BlockState};
 use crate::block_entity::BlockEntity;
+use crate::block_position::BlockPosition;
 use crate::bounding_box::BoundingBox;
 use crate::entity::Entity;
 use crate::metadata::Metadata;
@@ -15,12 +16,6 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct BlockPosition {
-    pub(crate) x: i32,
-    pub(crate) y: i32,
-    pub(crate) z: i32,
-}
 
 impl UniversalSchematic {
     pub fn new(name: String) -> Self {
@@ -64,6 +59,14 @@ impl UniversalSchematic {
             }
         }
         None
+    }
+
+    pub fn get_block_entities_as_list(&self) -> Vec<BlockEntity> {
+        let mut block_entities = Vec::new();
+        for region in self.regions.values() {
+            block_entities.extend(region.get_block_entities_as_list());
+        }
+        block_entities
     }
 
     pub fn set_block_entity(&mut self, position: BlockPosition, block_entity: BlockEntity) -> bool {
@@ -375,6 +378,8 @@ impl UniversalSchematic {
 mod tests {
     use std::io::Cursor;
     use quartz_nbt::io::{read_nbt, write_nbt};
+    use crate::block_entity;
+    use crate::item::ItemStack;
     use super::*;
 
 
@@ -497,17 +502,19 @@ mod tests {
     fn test_block_entity_operations() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
 
-        let block_entity = BlockEntity::new("minecraft:chest".to_string(), (5, 10, 15))
-            .with_nbt_data("Items".to_string(), "[{id:\"minecraft:diamond\",Count:64b,Slot:0b}]".to_string());
 
-        assert!(schematic.add_block_entity( block_entity.clone()));
+        let chest = BlockEntity::create_chest((5, 10, 15), vec![
+            ItemStack::new("minecraft:diamond", 64).with_slot(0)
+        ]);
+
+        assert!(schematic.add_block_entity( chest.clone()));
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 1);
-        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&block_entity));
+        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&chest));
 
         let removed_block_entity = schematic.remove_block_entity((5, 10, 15)).unwrap();
-        assert_eq!(removed_block_entity, block_entity);
+        assert_eq!(removed_block_entity, chest);
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 0);
@@ -517,19 +524,17 @@ mod tests {
     fn test_block_entity_helper_operations() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
 
-        // Create a chest block entity with a diamond in slot 0
-        let block_entity = BlockEntity::new("minecraft:chest".to_string(), (5, 10, 15))
-            .with_item(0, "minecraft:diamond", 64)
-            .with_custom_data("Lock", "SecretKey");
+        let diamond = ItemStack::new("minecraft:diamond", 64).with_slot(0);
+        let chest = BlockEntity::create_chest((5, 10, 15), vec![diamond]);
 
-        assert!(schematic.add_block_entity(block_entity.clone()));
+        assert!(schematic.add_block_entity( chest.clone()));
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 1);
-        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&block_entity));
+        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&chest));
 
         let removed_block_entity = schematic.remove_block_entity((5, 10, 15)).unwrap();
-        assert_eq!(removed_block_entity, block_entity);
+        assert_eq!(removed_block_entity, chest);
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 0);
@@ -539,17 +544,18 @@ mod tests {
     fn test_block_entity_in_region_operations() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
 
-        let block_entity = BlockEntity::new("minecraft:chest".to_string(), (5, 10, 15))
-            .with_nbt_data("Items".to_string(), "[{id:\"minecraft:diamond\",Count:64b,Slot:0b}]".to_string());
 
-        assert!(schematic.add_block_entity_in_region("Main", block_entity.clone()));
+
+
+        let chest = BlockEntity::create_chest((5, 10, 15), vec![ItemStack::new("minecraft:diamond", 64).with_slot(0)]);
+        assert!(schematic.add_block_entity_in_region("Main", chest.clone()));
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 1);
-        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&block_entity));
+        assert_eq!(region.block_entities.get(&(5, 10, 15)), Some(&chest));
 
         let removed_block_entity = schematic.remove_block_entity_in_region("Main", (5, 10, 15)).unwrap();
-        assert_eq!(removed_block_entity, block_entity);
+        assert_eq!(removed_block_entity, chest);
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 0);

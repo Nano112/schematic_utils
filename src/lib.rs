@@ -1,18 +1,21 @@
 use wasm_bindgen::prelude::*;
 use js_sys;
-use js_sys::Array;
+use js_sys::{Array, Object, Reflect};
 
 mod universal_schematic;
 mod region;
 mod block_state;
 mod entity;
-mod block_entity;
-mod utils;
+pub mod block_entity;
 mod formats;
 mod print_utils;
 mod bounding_box;
 mod metadata;
 mod mchprs_world;
+mod block_position;
+pub mod utils;
+mod item;
+
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;
@@ -20,6 +23,7 @@ pub use block_state::BlockState;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic as print_schematic, format_json_schematic as print_json_schematic};
 use web_sys::console;
+use crate::block_position::BlockPosition;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -29,12 +33,6 @@ pub fn start() {
 #[wasm_bindgen]
 pub struct SchematicWrapper(UniversalSchematic);
 
-#[wasm_bindgen]
-pub struct BlockPosition {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
-}
 
 #[wasm_bindgen]
 impl SchematicWrapper {
@@ -42,6 +40,16 @@ impl SchematicWrapper {
     pub fn new() -> Self {
         console::log_1(&"SchematicWrapper created".into());
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
+    }
+
+    pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
+        if litematic::is_litematic(data) {
+            self.from_litematic(data)
+        } else if schematic::is_schematic(data) {
+            self.from_schematic(data)
+        } else {
+            Err(JsValue::from_str("Unknown or unsupported schematic format"))
+        }
     }
     pub fn from_litematic(&mut self, data: &[u8]) -> Result<(), JsValue> {
         self.0 = litematic::from_litematic(data)
@@ -72,6 +80,57 @@ impl SchematicWrapper {
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<String> {
         self.0.get_block(x, y, z).map(|block_state| block_state.name.clone())
     }
+
+    pub fn get_block_with_properties(&self, x: i32, y: i32, z: i32) -> Option<BlockStateWrapper> {
+        self.0.get_block(x, y, z).cloned().map(BlockStateWrapper)
+    }
+
+    pub fn get_block_entity(&self, x: i32, y: i32, z: i32) -> JsValue {
+        let block_position = BlockPosition { x, y, z };
+        if let Some(block_entity) = self.0.get_block_entity(block_position) {
+            if block_entity.id.contains("chest") {
+                let obj = Object::new();
+                Reflect::set(&obj, &"id".into(), &JsValue::from_str(&block_entity.id)).unwrap();
+
+                let position = Array::new();
+                position.push(&JsValue::from(block_entity.position.0));
+                position.push(&JsValue::from(block_entity.position.1));
+                position.push(&JsValue::from(block_entity.position.2));
+                Reflect::set(&obj, &"position".into(), &position).unwrap();
+
+                // Use the new to_js_value method
+                Reflect::set(&obj, &"nbt".into(), &block_entity.nbt.to_js_value()).unwrap();
+
+                obj.into()
+            } else {
+                JsValue::NULL
+            }
+        } else {
+            JsValue::NULL
+        }
+    }
+
+    pub fn get_all_block_entities(&self) -> JsValue {
+        let block_entities = self.0.get_block_entities_as_list();
+        let js_block_entities = Array::new();
+        for block_entity in block_entities {
+            let obj = Object::new();
+            Reflect::set(&obj, &"id".into(), &JsValue::from_str(&block_entity.id)).unwrap();
+
+            let position = Array::new();
+            position.push(&JsValue::from(block_entity.position.0));
+            position.push(&JsValue::from(block_entity.position.1));
+            position.push(&JsValue::from(block_entity.position.2));
+            Reflect::set(&obj, &"position".into(), &position).unwrap();
+
+            // Use the new to_js_value method
+            Reflect::set(&obj, &"nbt".into(), &block_entity.nbt.to_js_value()).unwrap();
+
+            js_block_entities.push(&obj);
+        }
+        js_block_entities.into()
+    }
+
 
     pub fn print_schematic(&self) -> String {
         print_schematic(&self.0)
@@ -141,6 +200,31 @@ impl SchematicWrapper {
                     .collect::<Array>()
             })
             .collect::<Array>()
+    }
+
+    pub fn get_chunk_blocks(&self, offset_x: i32, offset_y: i32, offset_z: i32, width: i32, height: i32, length: i32) -> js_sys::Array {
+        let blocks = self.0.iter_blocks()
+            .filter(|(pos, _)| {
+                pos.x >= offset_x && pos.x < offset_x + width &&
+                    pos.y >= offset_y && pos.y < offset_y + height &&
+                    pos.z >= offset_z && pos.z < offset_z + length
+            })
+            .map(|(pos, block)| {
+                let obj = js_sys::Object::new();
+                js_sys::Reflect::set(&obj, &"x".into(), &pos.x.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"y".into(), &pos.y.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"z".into(), &pos.z.into()).unwrap();
+                js_sys::Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
+                let properties = js_sys::Object::new();
+                for (key, value) in &block.properties {
+                    js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                }
+                js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+                obj
+            })
+            .collect::<js_sys::Array>();
+
+        blocks
     }
 
 

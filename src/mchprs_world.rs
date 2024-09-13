@@ -77,8 +77,8 @@ impl MchprsWorld {
     }
 
     fn convert_block_entity(&self, block_entity: UtilBlockEntity) -> Option<BlockEntity> {
-        let nbt = block_entity.to_hematite_nbt();
-        BlockEntity::from_nbt(&block_entity.id, &nbt)
+        let hm_nbt = block_entity.to_hashmap();
+        BlockEntity::from_nbt(&block_entity.id, &hm_nbt)
     }
 
     fn get_chunk_key(&self, pos: BlockPos) -> (i32, i32) {
