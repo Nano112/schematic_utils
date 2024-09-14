@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 
 #[wasm_bindgen]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct BlockPosition {
     pub x: i32,
     pub y: i32,

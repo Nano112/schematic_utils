@@ -161,7 +161,9 @@ impl Region {
         if new_size == self.size && new_position == self.position {
             return;
         }
-        let mut new_blocks = vec![0; new_bounding_box.volume() as usize];
+        //get the air id
+        let air_id = self.palette.iter().position(|b| b.name == "minecraft:air").unwrap();
+        let mut new_blocks = vec![air_id; new_bounding_box.volume() as usize];
         for index in 0..self.blocks.len() {
             let (x, y, z) = self.index_to_coords(index);
             let new_index = new_bounding_box.coords_to_index(x, y, z);

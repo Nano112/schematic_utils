@@ -5,6 +5,7 @@ use crate::{ BlockState};
 use crate::block_entity::BlockEntity;
 use crate::block_position::BlockPosition;
 use crate::bounding_box::BoundingBox;
+use crate::chunk::Chunk;
 use crate::entity::Entity;
 use crate::metadata::Metadata;
 use crate::region::Region;
@@ -312,33 +313,37 @@ impl UniversalSchematic {
         block_counts
     }
 
-    pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Vec<BlockPosition>> {
-        let mut chunks = Vec::new();
+    pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Chunk> {
+        use std::collections::HashMap;
+        let mut chunk_map: HashMap<(i32, i32, i32), Vec<BlockPosition>> = HashMap::new();
         let (width, height, length) = self.get_dimensions();
-        let chunk_count_x = (width + chunk_width - 1) / chunk_width;
-        let chunk_count_y = (height + chunk_height - 1) / chunk_height;
-        // let chunk_count_z = (length + chunk_length - 1) / chunk_length;
 
         for x in 0..width {
             for y in 0..height {
                 for z in 0..length {
-                    if let Some(_) = self.get_block(x, y, z) {
+                    if self.get_block(x, y, z).is_some() {
                         let chunk_x = x / chunk_width;
                         let chunk_y = y / chunk_height;
                         let chunk_z = z / chunk_length;
-                        let chunk_index = (chunk_x + chunk_y * chunk_count_x + chunk_z * chunk_count_x * chunk_count_y) as usize;
+                        let chunk_key = (chunk_x, chunk_y, chunk_z);
 
-                        while chunks.len() <= chunk_index {
-                            chunks.push(Vec::new());
-                        }
-
-                        chunks[chunk_index].push(BlockPosition { x, y, z });
+                        chunk_map
+                            .entry(chunk_key)
+                            .or_insert_with(Vec::new)
+                            .push(BlockPosition { x, y, z });
                     }
                 }
             }
         }
 
-        chunks
+        chunk_map.into_iter()
+            .map(|((chunk_x, chunk_y, chunk_z), positions)| Chunk {
+                chunk_x,
+                chunk_y,
+                chunk_z,
+                positions,
+            })
+            .collect()
     }
 
 
@@ -357,19 +362,28 @@ impl UniversalSchematic {
         })
     }
 
-    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32)
-                       -> impl Iterator<Item = Vec<(BlockPosition, &BlockState)>>
-    {
-        let chunks = self.split_into_chunks(chunk_width, chunk_height, chunk_length);
-        chunks.into_iter().map(move |chunk| {
-            chunk.into_iter()
-                .filter_map(|pos| {
-                    self.get_block(pos.x, pos.y, pos.z)
-                        .map(|block| (pos, block))
-                })
-                .collect()
-        })
+    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> impl Iterator<Item = Chunk> + '_ {
+        self.split_into_chunks(chunk_width, chunk_height, chunk_length)
+            .into_iter()
+            .map(move |chunk| {
+                let positions = chunk.positions;
+                let blocks = positions.into_iter()
+                    .filter_map(|pos| {
+                        self.get_block(pos.x, pos.y, pos.z)
+                            .map(|block| (pos, block))
+                    })
+                    .collect::<Vec<_>>();
+
+                Chunk {
+                    chunk_x: chunk.chunk_x,
+                    chunk_y: chunk.chunk_y,
+                    chunk_z: chunk.chunk_z,
+                    positions: blocks.iter().map(|(pos, _)| *pos).collect(),
+                }
+            })
     }
+
+
 
 
 }

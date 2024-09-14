@@ -11,6 +11,7 @@ pub struct MchprsWorld {
     schematic: UniversalSchematic,
     chunks: HashMap<(i32, i32), Chunk>,
     to_be_ticked: Vec<TickEntry>,
+    changed_blocks: Vec<BlockPos>,
 }
 
 impl MchprsWorld {
@@ -19,6 +20,7 @@ impl MchprsWorld {
                 schematic,
                 chunks: HashMap::new(),
                 to_be_ticked: Vec::new(),
+                changed_blocks: Vec::new(),
             };
 
             world.initialize_chunks();
@@ -163,6 +165,14 @@ impl MchprsWorld {
         let monitor = Default::default();
         compiler.compile(self, bounds, options, ticks, monitor);
         compiler
+    }
+
+
+    // Method to get and clear changed blocks
+    pub fn take_changed_blocks(&mut self) -> Vec<BlockPos> {
+        let changes = self.changed_blocks.clone();
+        self.changed_blocks.clear();
+        changes
     }
 }
 
