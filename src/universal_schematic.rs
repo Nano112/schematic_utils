@@ -17,6 +17,7 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
+pub type SimpleBlockMapping = (&'static str, Vec<(&'static str, &'static str)>);
 
 impl UniversalSchematic {
     pub fn new(name: String) -> Self {
@@ -42,6 +43,44 @@ impl UniversalSchematic {
         });
 
         region.set_block(x, y, z, block)
+    }
+
+
+        pub fn from_layers(name: String, block_mappings: &[(&'static char, SimpleBlockMapping)], layers: &str) -> Self {
+            let mut schematic = UniversalSchematic::new(name);
+            let full_mappings = Self::convert_to_full_mappings(block_mappings);
+
+            let layers: Vec<&str> = layers.split("\n\n")
+                .map(|layer| layer.trim())
+                .filter(|layer| !layer.is_empty())
+                .collect();
+
+            for (y, layer) in layers.iter().enumerate() {
+                let rows: Vec<&str> = layer.lines()
+                    .map(|row| row.trim())
+                    .filter(|row| !row.is_empty())
+                    .collect();
+
+                for (z, row) in rows.iter().enumerate() {
+                    for (x, c) in row.chars().enumerate() {
+                        if let Some(block_state) = full_mappings.get(&c) {
+                            schematic.set_block(x as i32, y as i32, z as i32, block_state.clone());
+                        } else if c != ' ' {
+                            println!("Warning: Unknown character '{}' at position ({}, {}, {})", c, x, y, z);
+                        }
+                    }
+                }
+            }
+
+            schematic
+        }
+
+    fn convert_to_full_mappings(simple_mappings: &[(&'static char, SimpleBlockMapping)]) -> HashMap<char, BlockState> {
+        simple_mappings.iter().map(|(&c, (name, props))| {
+            let block_state = BlockState::new(format!("minecraft:{}", name))
+                .with_properties(props.iter().map(|&(k, v)| (k.to_string(), v.to_string())).collect());
+            (c, block_state)
+        }).collect()
     }
 
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<&BlockState> {

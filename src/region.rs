@@ -942,7 +942,7 @@ mod tests {
         for i in 0..8 {
             let coords = region.index_to_coords(i);
             let index = region.coords_to_index(coords.0, coords.1, coords.2);
-            assert!(index >= 0 && index < volume1);
+            assert!( index < volume1);
             assert_eq!(index, i);
         }
 

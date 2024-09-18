@@ -54,6 +54,18 @@ impl BlockState {
         self.properties = properties;
         self
     }
+
+    pub fn set_property(&mut self, key: String, value: String) {
+        self.properties.insert(key, value);
+    }
+
+    pub fn remove_property(&mut self, key: &str) {
+        self.properties.remove(key);
+    }
+
+    pub fn get_property(&self, key: &str) -> Option<&String> {
+        self.properties.get(key)
+    }
     pub fn to_nbt(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
         compound.insert("Name", self.name.clone());

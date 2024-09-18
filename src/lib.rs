@@ -40,59 +40,6 @@ pub fn start() {
 pub struct SchematicWrapper(UniversalSchematic);
 
 
-#[wasm_bindgen]
-pub struct MchprsWorldWrapper {
-    world: MchprsWorld,
-    compiler: Option<Compiler>,
-}
-
-#[wasm_bindgen]
-impl MchprsWorldWrapper {
-
-    #[wasm_bindgen]
-    pub fn run_simulation_step(&mut self) {
-
-    }
-
-    #[wasm_bindgen]
-    pub fn get_updated_blocks(&mut self) -> js_sys::Array {
-        let updated_blocks = js_sys::Array::new();
-        let changed_positions = self.world.take_changed_blocks();
-
-        for pos in changed_positions {
-            let block_id = self.world.get_block_raw(pos);
-            let block = Block::from_id(block_id);
-            let block_name = block.get_name();
-            let block_properties = block.properties();
-
-            // Create JavaScript object for the block
-            let block_js = js_sys::Object::new();
-            js_sys::Reflect::set(&block_js, &"x".into(), &JsValue::from(pos.x)).unwrap();
-            js_sys::Reflect::set(&block_js, &"y".into(), &JsValue::from(pos.y)).unwrap();
-            js_sys::Reflect::set(&block_js, &"z".into(), &JsValue::from(pos.z)).unwrap();
-            js_sys::Reflect::set(&block_js, &"name".into(), &JsValue::from_str(block_name)).unwrap();
-
-            // Add properties
-            let properties_js = js_sys::Object::new();
-            for (key, value) in block_properties {
-                js_sys::Reflect::set(&properties_js, &key.into(), &value.into()).unwrap();
-            }
-            js_sys::Reflect::set(&block_js, &"properties".into(), &properties_js).unwrap();
-
-            updated_blocks.push(&block_js);
-        }
-
-        updated_blocks
-    }
-
-    #[wasm_bindgen]
-    pub fn on_use_block(&mut self, x: i32, y: i32, z: i32) {
-        let pos = BlockPos::new(x, y, z);
-        if let Some(compiler) = &mut self.compiler {
-            compiler.on_use_block(pos);
-        }
-    }
-}
 
 #[wasm_bindgen]
 impl SchematicWrapper {
@@ -138,14 +85,7 @@ impl SchematicWrapper {
         self.0.set_block(x, y, z, BlockState::new(block_name.to_string()));
     }
 
-    #[wasm_bindgen]
-    pub fn create_simulation_world(&self) -> MchprsWorldWrapper {
-        let world = MchprsWorld::new(self.0.clone());
-        MchprsWorldWrapper {
-            world,
-            compiler: None,
-        }
-    }
+
 
     pub fn set_block_with_properties(
         &mut self,

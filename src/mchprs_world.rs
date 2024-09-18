@@ -11,35 +11,63 @@ pub struct MchprsWorld {
     schematic: UniversalSchematic,
     chunks: HashMap<(i32, i32), Chunk>,
     to_be_ticked: Vec<TickEntry>,
-    changed_blocks: Vec<BlockPos>,
+    compiler: Compiler,
 }
 
 impl MchprsWorld {
-        pub fn new(schematic: UniversalSchematic) -> Self {
-            let mut world = MchprsWorld {
-                schematic,
-                chunks: HashMap::new(),
-                to_be_ticked: Vec::new(),
-                changed_blocks: Vec::new(),
-            };
+    pub fn new(schematic: UniversalSchematic) -> Self {
+        let mut world = MchprsWorld {
+            schematic,
+            chunks: HashMap::new(),
+            to_be_ticked: Vec::new(),
+            compiler: Compiler::default(),
+        };
 
-            world.initialize_chunks();
-            world.populate_chunks();
-            world
-        }
+        world.initialize_chunks();
+        world.populate_chunks();
+        world.update_redstone();
+        world.initialize_compiler();
+        world
+    }
 
-        fn initialize_chunks(&mut self) {
-            let bounding_box = self.schematic.get_bounding_box();
-            let (min_x, min_y, min_z) = (bounding_box.min.0, bounding_box.min.1, bounding_box.min.2);
-            let (max_x, max_y, max_z) = (bounding_box.max.0, bounding_box.max.1, bounding_box.max.2);
+    fn initialize_compiler(&mut self) {
+        let bounding_box = self.schematic.get_bounding_box();
+        let bounds = (
+            BlockPos::new(0, 0, 0),
+            BlockPos::new(bounding_box.max.0, bounding_box.max.1, bounding_box.max.2)
+        );
+        let options = CompilerOptions {
+            optimize: true,
+            io_only: true,
+            wire_dot_out: true,
+            ..Default::default()
+        };
+        let ticks = self.to_be_ticked.drain(..).collect();
+        let monitor = Default::default();
 
-            for chunk_x in (min_x >> 4)..=((max_x >> 4) + 1) {
-                for chunk_z in (min_z >> 4)..=((max_z >> 4) + 1) {
-                    let chunk = Chunk::empty(chunk_x, chunk_z, ((max_y - min_y) / 16 + 1) as usize);
-                    self.chunks.insert((chunk_x, chunk_z), chunk);
-                }
+        // Create a temporary Compiler
+        let mut temp_compiler = std::mem::take(&mut self.compiler);
+
+        // Use the temporary Compiler
+        temp_compiler.compile(self, bounds, options, ticks, monitor);
+
+        // Put the Compiler back
+        self.compiler = temp_compiler;
+    }
+
+
+    fn initialize_chunks(&mut self) {
+        let bounding_box = self.schematic.get_bounding_box();
+        let (min_x, min_y, min_z) = (bounding_box.min.0, bounding_box.min.1, bounding_box.min.2);
+        let (max_x, max_y, max_z) = (bounding_box.max.0, bounding_box.max.1, bounding_box.max.2);
+
+        for chunk_x in (min_x >> 4)..=((max_x >> 4) + 1) {
+            for chunk_z in (min_z >> 4)..=((max_z >> 4) + 1) {
+                let chunk = Chunk::empty(chunk_x, chunk_z, ((max_y - min_y) / 16 + 1) as usize);
+                self.chunks.insert((chunk_x, chunk_z), chunk);
             }
         }
+    }
 
     fn populate_chunks(&mut self) {
         // Collect all block data first
@@ -79,8 +107,8 @@ impl MchprsWorld {
     }
 
     fn convert_block_entity(&self, block_entity: UtilBlockEntity) -> Option<BlockEntity> {
-        let hm_nbt = block_entity.to_hashmap();
-        BlockEntity::from_nbt(&block_entity.id, &hm_nbt)
+        let nbt = block_entity.to_hashmap();
+        BlockEntity::from_nbt(&block_entity.id, &nbt)
     }
 
     fn get_chunk_key(&self, pos: BlockPos) -> (i32, i32) {
@@ -120,10 +148,32 @@ impl MchprsWorld {
         }
     }
 
-    pub fn update_with_compiler(&mut self, compiler: &mut Compiler) {
-        compiler.tick();
-        compiler.flush(self);
+    pub fn on_use_block(&mut self, pos: BlockPos) {
+        let block = self.get_block(pos);
+        if block.get_name() == "lever" {
+            let current_state = self.get_lever_power(pos);
+            self.set_lever_power(pos, !current_state);
+            self.compiler.on_use_block(pos);
+            return;
+        }
+        //we clicked on a block that is not a lever so we need to throw an error
+        eprintln!("Error: Tried to use block at {:?} which is not a lever", pos);
     }
+
+    pub fn tick(&mut self, number_of_ticks: u32) {
+        // self.compiler.tick();
+        for _ in 0..number_of_ticks {
+            self.compiler.tick();
+        }
+    }
+
+    pub fn flush(&mut self) {
+        let mut temp_compiler = std::mem::take(&mut self.compiler);
+        temp_compiler.flush(self);
+        self.compiler = temp_compiler;
+        self.update_redstone();
+    }
+
 
     pub fn is_lit(&self, pos: BlockPos) -> bool {
         self.get_block(pos)
@@ -166,16 +216,80 @@ impl MchprsWorld {
         compiler.compile(self, bounds, options, ticks, monitor);
         compiler
     }
-
-
-    // Method to get and clear changed blocks
-    pub fn take_changed_blocks(&mut self) -> Vec<BlockPos> {
-        let changes = self.changed_blocks.clone();
-        self.changed_blocks.clear();
-        changes
-    }
 }
 
+pub fn generate_truth_table(schematic: &UniversalSchematic) -> Vec<HashMap<String, bool>> {
+    let mut world = MchprsWorld::new(schematic.clone());
+
+    // Find all levers and lamps
+    let (inputs, outputs) = find_inputs_and_outputs(&world);
+
+    println!("Inputs: {:?}", inputs);
+    println!("Outputs: {:?}", outputs);
+
+    let mut truth_table = Vec::new();
+
+    // Generate all possible input combinations
+    let input_combinations = generate_input_combinations(inputs.len());
+
+    for combination in input_combinations {
+        // Set the inputs according to the current combination
+        for (i, &input_pos) in inputs.iter().enumerate() {
+            if combination[i] {
+                world.on_use_block(input_pos);
+            }
+        }
+
+        // Run the simulation
+        world.tick(20);  // Adjust the number of ticks as needed
+        world.flush();
+
+        // Read the outputs
+        let mut result = HashMap::new();
+        for (i, &input_pos) in inputs.iter().enumerate() {
+            result.insert(format!("Input {}", i), world.get_lever_power(input_pos));
+        }
+        for (i, &output_pos) in outputs.iter().enumerate() {
+            result.insert(format!("Output {}", i), world.is_lit(output_pos));
+        }
+
+        truth_table.push(result);
+
+        // Reset the world for the next iteration
+        world = MchprsWorld::new(schematic.clone());
+    }
+
+    truth_table
+}
+
+fn find_inputs_and_outputs(world: &MchprsWorld) -> (Vec<BlockPos>, Vec<BlockPos>) {
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+
+    let dimensions = world.schematic.get_dimensions();
+    for x in 0..dimensions.0 {
+        for y in 0..dimensions.1 {
+            for z in 0..dimensions.2 {
+                let pos = BlockPos::new(x, y, z);
+                let block = world.get_block(pos);
+                let block_name = block.get_name();
+                match block_name {
+                    "lever" => inputs.push(pos),
+                    "redstone_lamp" => outputs.push(pos),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    (inputs, outputs)
+}
+
+fn generate_input_combinations(num_inputs: usize) -> Vec<Vec<bool>> {
+    (0..2usize.pow(num_inputs as u32))
+        .map(|i| (0..num_inputs).map(|j| (i & (1 << j)) != 0).collect())
+        .collect()
+}
 impl World for MchprsWorld {
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
         let chunk_key = self.get_chunk_key(pos);
@@ -236,83 +350,13 @@ impl World for MchprsWorld {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::Path;
-    use std::sync::Arc;
-    use log::{debug, info};
-    use mchprs_redpiler::TaskMonitor;
-    use tracing_subscriber::{fmt, EnvFilter};
     use super::*;
     use crate::{schematic, BlockPosition, BlockState};
-
-    pub struct LoggingTaskMonitor {
-        inner: Arc<TaskMonitor>,
-    }
-
-    impl LoggingTaskMonitor {
-        pub fn new(inner: Arc<TaskMonitor>) -> Self {
-            Self { inner }
-        }
-
-        pub fn cancel(&self) {
-            info!("Task cancelled");
-            self.inner.cancel();
-        }
-
-        pub fn cancelled(&self) -> bool {
-            let cancelled = self.inner.cancelled();
-            if cancelled {
-                info!("Task is cancelled");
-            }
-            cancelled
-        }
-
-        pub fn set_progress(&self, progress: usize) {
-            debug!("Setting progress to {}", progress);
-            self.inner.set_progress(progress);
-        }
-
-        pub fn inc_progress(&self) {
-            let new_progress = self.inner.progress() + 1;
-            debug!("Incrementing progress to {}", new_progress);
-            self.inner.inc_progress();
-        }
-
-        pub fn set_max_progress(&self, max_progress: usize) {
-            info!("Setting max progress to {}", max_progress);
-            self.inner.set_max_progress(max_progress);
-        }
-
-        pub fn progress(&self) -> usize {
-            let progress = self.inner.progress();
-            debug!("Current progress: {}", progress);
-            progress
-        }
-
-        pub fn max_progress(&self) -> usize {
-            let max_progress = self.inner.max_progress();
-            debug!("Max progress: {}", max_progress);
-            max_progress
-        }
-
-        pub fn set_message(&self, message: String) {
-            info!("Task message: {}", message);
-            self.inner.set_message(message);
-        }
-
-        pub fn message(&self) -> Option<Arc<String>> {
-            let message = self.inner.message();
-            if let Some(msg) = &message {
-                debug!("Current message: {}", msg);
-            } else {
-                debug!("No current message");
-            }
-            message
-        }
-    }
+    use crate::universal_schematic::SimpleBlockMapping;
 
     fn get_sample_schematic() -> UniversalSchematic {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
@@ -359,65 +403,55 @@ mod tests {
         let redstone_lamp_block = BlockState::new("minecraft:redstone_lamp".to_string())
             .with_properties([
                 ("lit", "false")
-            ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect()
-            );
+            ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect());
         schematic.set_block(1, 0, 3, redstone_lamp_block.clone());
+
+        // save the schematic
+        let schematic_file = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
+        let output_path = "tests/output/compiled_and_gate.schem";
+        std::fs::write(output_path, &schematic_file).expect("Failed to write schematic file");
         schematic
     }
 
-
-#[test]
+    #[test]
     fn test_simple_redstone_line() {
         let schematic = get_sample_schematic();
         let mut world = MchprsWorld::new(schematic);
-        world.update_redstone();
-        let mut compiler = Compiler::default();
-        let bounding_box = world.schematic.get_bounding_box();
-        let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(bounding_box.max.0, bounding_box.max.1, bounding_box.max.2));
-        let options = CompilerOptions {
-            optimize: true,
-            io_only: true,
-            wire_dot_out: true,
-            ..Default::default()
-        };
-        let ticks = world.to_be_ticked.drain(..).collect();
-        let monitor = Default::default();
-        compiler.compile(&mut world, bounds, options, ticks, monitor);
 
         for x in 1..15 {
             let power = world.get_redstone_power(BlockPos::new(x, 1, 0));
             assert_eq!(power, 16 - x as u8);
         }
+        println!("{:?}", world.get_block(BlockPos::new(0, 1, 0)).properties());
+
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), true);
 
-        compiler.on_use_block(BlockPos::new(0, 1, 0));
-        compiler.tick();
-        compiler.tick();
-        compiler.flush(&mut world);
+        world.on_use_block(BlockPos::new(0, 1, 0));
+        println!("{:?}", world.get_block(BlockPos::new(0, 1, 0)).properties());
 
+        world.tick(2);
+        world.flush();
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), false);
 
-        compiler.on_use_block(BlockPos::new(0, 1, 0));
-        compiler.tick();
-        compiler.tick();
-        compiler.flush(&mut world);
+        world.on_use_block(BlockPos::new(0, 1, 0));
+        world.tick(2);
+        world.flush();
 
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), true);
-        compiler.on_use_block(BlockPos::new(0, 1, 0));
-        compiler.tick();
-        compiler.flush(&mut world);
+        world.on_use_block(BlockPos::new(0, 1, 0));
+        world.tick(1);
+        world.flush();
 
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), true);
-        compiler.tick();
-        compiler.flush(&mut world);
+        world.tick(1);
+        world.flush();
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), false);
     }
 
     #[test]
-    fn test_simple_and_gate(){
+    fn test_simple_and_gate() {
         let schematic = get_sample_and_gate_schematic();
         let mut world = MchprsWorld::new(schematic);
-        let mut compiler = world.get_compiled_world();
 
         let lever_a_pos = BlockPos::new(0, 0, 0);
         let lever_b_pos = BlockPos::new(2, 0, 0);
@@ -428,18 +462,185 @@ mod tests {
                 let lever_a_state = world.get_lever_power(lever_a_pos);
                 let lever_b_state = world.get_lever_power(lever_b_pos);
                 if lever_a_state != (a == 1) {
-                    compiler.on_use_block(lever_a_pos);
+                    world.on_use_block(lever_a_pos);
                 }
                 if lever_b_state != (b == 1) {
-                    compiler.on_use_block(lever_b_pos);
+                    world.on_use_block(lever_b_pos);
                 }
 
-                compiler.tick();
-                compiler.tick();
-                world.update_with_compiler(&mut compiler);
+                world.tick(2);
+                world.flush();
                 println!("A: {}, B: {}, Output: {}", a, b, world.is_lit(output_lamp_pos));
+                assert_eq!(world.is_lit(output_lamp_pos), a == 1 && b == 1);
             }
         }
     }
 
+    fn get_comparator_xor_gate() -> UniversalSchematic {
+        let block_mappings: &[(&char, SimpleBlockMapping)] = &[
+            (&'C', ("gray_concrete", vec![])),
+            (&'X', ("comparator", vec![
+                ("mode", "subtract"),
+                ("powered", "false"),
+                ("facing", "south")
+            ])),
+            (&'R', ("redstone_wire", vec![
+                ("power", "0"),
+                ("north", "side"),
+                ("south", "side"),
+                ("east", "side"),
+                ("west", "side")
+            ])),
+            (&'.', ("air", vec![])),
+            (&'L', ("redstone_lamp", vec![("lit", "false")])),
+            (&'l', ("lever", vec![
+                ("powered", "false"),
+                ("face", "wall"),
+                ("facing", "south")
+            ])),
+        ];
+
+        let layers = r#"
+        CCCC
+        CCCC
+        CCCC
+        CCCC
+        ....
+
+        .L..
+        .RC.
+        RXXR
+        CRRC
+        l..l
+    "#;
+
+        let schematic = UniversalSchematic::from_layers("XOR gate".to_string(), block_mappings, layers);
+
+        // Save the schematic
+        let schematic_file = crate::schematic::to_schematic(&schematic).expect("Failed to convert to schem");
+        std::fs::write("tests/output/compiled_xor_gate.schem", &schematic_file)
+            .expect("Failed to write schematic file");
+
+        schematic
+    }
+
+    #[test]
+    fn test_torch_based_xor() {
+        let block_mappings: &[(&char, SimpleBlockMapping)] = &[
+            (&'C', ("gray_concrete", vec![])),
+            (&'I', ("redstone_wall_torch", vec![
+                ("lit", "false"),
+                ("facing", "north")
+            ])),
+            (&'i', ("redstone_torch", vec![
+                ("lit", "false"),
+            ])),
+            (&'R', ("redstone_wire", vec![
+                ("power", "0"),
+                ("north", "side"),
+                ("south", "side"),
+                ("east", "side"),
+                ("west", "side")
+            ])),
+            (&'.', ("air", vec![])),
+            (&'L', ("redstone_lamp", vec![("lit", "false")])),
+            (&'l', ("lever", vec![
+                ("powered", "false"),
+                ("face", "wall"),
+                ("facing", "south")
+            ])),
+        ];
+        let layers = r#"
+        ILI
+        C.C
+        C.C
+        l.l
+
+        ...
+        RIR
+        iCi
+        ...
+
+        ...
+        ...
+        CRC
+        ...
+    "#;
+
+        let schematic = UniversalSchematic::from_layers("XOR gate".to_string(), block_mappings, layers);
+        for row in &generate_truth_table(&schematic) {
+            assert_eq!(*row.get("Output 0").unwrap(), *row.get("Input 0").unwrap() ^ *row.get("Input 1").unwrap());
+        }
+    }
+
+
+    #[test]
+    fn test_comparator_xor_gate() {
+        let schematic = get_comparator_xor_gate();
+        let mut world = MchprsWorld::new(schematic);
+
+        let lever_a_pos = BlockPos::new(0, 1, 4);
+        let lever_b_pos = BlockPos::new(3, 1, 4);
+        let output_lamp_pos = BlockPos::new(1, 1, 0);
+
+        for a in 0..2 {
+            for b in 0..2 {
+                let lever_a_state = world.get_lever_power(lever_a_pos);
+                let lever_b_state = world.get_lever_power(lever_b_pos);
+                if lever_a_state != (a == 1) {
+                    world.on_use_block(lever_a_pos);
+                }
+                if lever_b_state != (b == 1) {
+                    world.on_use_block(lever_b_pos);
+                }
+                world.tick(4);
+                world.flush();
+                println!("A: {}, B: {}, Output: {}", a, b, world.is_lit(output_lamp_pos));
+                assert_eq!(world.is_lit(output_lamp_pos), a != b);
+            }
+        }
+    }
+    #[test]
+    fn test_auto_truth_table_xor_gate() {
+        let schematic = get_comparator_xor_gate();
+        let truth_table = generate_truth_table(&schematic);
+
+        println!("XOR Gate Truth Table:");
+        for row in &truth_table {
+            println!("{:?}", row);
+        }
+
+        assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
+
+        // Verify XOR behavior
+        for row in truth_table {
+            let input_a = row.get("Input 0").unwrap();
+            let input_b = row.get("Input 1").unwrap();
+            let output = row.get("Output 0").unwrap();
+
+            assert_eq!(*output, *input_a ^ *input_b);
+        }
+    }
+
+    #[test]
+    fn test_auto_truth_table_and_gate() {
+        let schematic = get_sample_and_gate_schematic();
+        let truth_table = generate_truth_table(&schematic);
+
+        println!("AND Gate Truth Table:");
+        for row in &truth_table {
+            println!("{:?}", row);
+        }
+
+        assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
+
+        // Verify AND behavior
+        for row in truth_table {
+            let input_a = row.get("Input 0").unwrap();
+            let input_b = row.get("Input 1").unwrap();
+            let output = row.get("Output 0").unwrap();
+
+            assert_eq!(*output, *input_a & *input_b);
+        }
+    }
 }
