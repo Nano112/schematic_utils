@@ -5,6 +5,7 @@ use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, sch
 #[test]
 fn test_litematic_to_schem_conversion() {
 
+
     let name = "gol";
 
     // Path to the sample .litematic file
