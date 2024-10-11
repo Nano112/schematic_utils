@@ -5,7 +5,14 @@ use mchprs_redpiler::{Compiler, CompilerOptions};
 use nbt::{Map, Value};
 use crate::block_entity::BlockEntity as UtilBlockEntity;
 use crate::UniversalSchematic;
+use thiserror::Error;
 
+#[derive(Error, Debug)]
+pub enum MchprsWorldError {
+    #[error("Initialization failed: {0}")]
+    InitializationFailed(String),
+    // Add other error variants as needed
+}
 
 pub struct MchprsWorld {
     schematic: UniversalSchematic,
@@ -23,7 +30,10 @@ impl MchprsWorld {
             compiler: Compiler::default(),
         };
 
-        world.initialize_chunks();
+        world.initialize_chunks().map_err(|e| {
+            MchprsWorldError::InitializationFailed(format!("initialize_chunks failed: {}", e))
+        }).expect("TODO: panic message");
+
         world.populate_chunks();
         world.update_redstone();
         world.initialize_compiler();
@@ -56,7 +66,7 @@ impl MchprsWorld {
     }
 
 
-    fn initialize_chunks(&mut self) {
+    fn initialize_chunks(&mut self) -> Result<(), String> {
         let bounding_box = self.schematic.get_bounding_box();
         let (min_x, min_y, min_z) = (bounding_box.min.0, bounding_box.min.1, bounding_box.min.2);
         let (max_x, max_y, max_z) = (bounding_box.max.0, bounding_box.max.1, bounding_box.max.2);
@@ -67,6 +77,13 @@ impl MchprsWorld {
                 self.chunks.insert((chunk_x, chunk_z), chunk);
             }
         }
+
+        // Example validation: Ensure chunks are initialized correctly
+        if self.chunks.is_empty() {
+            return Err("No chunks initialized".to_string());
+        }
+
+        Ok(())
     }
 
     fn populate_chunks(&mut self) {

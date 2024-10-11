@@ -40,6 +40,49 @@ pub fn start() {
 pub struct SchematicWrapper(UniversalSchematic);
 
 
+#[wasm_bindgen]
+pub struct MchprsWorldWrapper {
+    world: MchprsWorld,
+}
+
+#[wasm_bindgen]
+impl MchprsWorldWrapper {
+    #[wasm_bindgen(constructor)]
+    pub fn new(schematic: &SchematicWrapper) -> Self {
+        console::log_1(&"Creating MchprsWorldWrapper".into());
+
+        let world = MchprsWorld::new(schematic.0.clone());
+
+        console::log_1(&"MchprsWorld created successfully".into());
+
+        MchprsWorldWrapper { world }
+    }
+
+    pub fn on_use_block(&mut self, x: i32, y: i32, z: i32) {
+        self.world.on_use_block(BlockPos::new(x, y, z));
+    }
+
+    pub fn tick(&mut self, number_of_ticks: u32) {
+        self.world.tick(number_of_ticks);
+    }
+
+    pub fn flush(&mut self) {
+        self.world.flush();
+    }
+
+    pub fn is_lit(&self, x: i32, y: i32, z: i32) -> bool {
+        self.world.is_lit(BlockPos::new(x, y, z))
+    }
+
+    pub fn get_lever_power(&self, x: i32, y: i32, z: i32) -> bool {
+        self.world.get_lever_power(BlockPos::new(x, y, z))
+    }
+
+    pub fn get_redstone_power(&self, x: i32, y: i32, z: i32) -> u8 {
+        self.world.get_redstone_power(BlockPos::new(x, y, z))
+    }
+}
+
 
 #[wasm_bindgen]
 impl SchematicWrapper {
@@ -49,6 +92,10 @@ impl SchematicWrapper {
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
 
+
+    pub fn create_simulation_world(&self) -> MchprsWorldWrapper {
+        MchprsWorldWrapper::new(self)
+    }
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
         if litematic::is_litematic(data) {

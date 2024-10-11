@@ -25,6 +25,7 @@ mc_schems = { git = "https://github.com/StackDoubleFlow/mc_schems.git" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hematite-nbt = "*"
 tracing = "0.1.40"
+thiserror = "1.0.63"
 
 
 

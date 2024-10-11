@@ -5,7 +5,7 @@ use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, sch
 #[test]
 fn test_litematic_to_schem_conversion() {
 
-    let name = "spinny";
+    let name = "gol";
 
     // Path to the sample .litematic file
     let input_path_str = format!("tests/samples/{}.litematic", name);
@@ -20,7 +20,7 @@ fn test_litematic_to_schem_conversion() {
     // Parse the .litematic data into a UniversalSchematic
     let mut schematic = litematic::from_litematic(&litematic_data).expect("Failed to parse litematic");
 
-    let region_blocks = schematic.get_region_from_index(0).unwrap().blocks.clone();
+    // let region_blocks = schematic.get_region_from_index(0).unwrap().blocks.clone();
 
     //print the length of the blocks list
     // println!("{:?}", region_blocks.len());
@@ -31,15 +31,15 @@ fn test_litematic_to_schem_conversion() {
     //place a diamond block at the center of the schematic
     // schematic.set_block(-1,-1,-1, BlockState::new("minecraft:diamond_block".to_string()));
 
-    let dimensions = schematic.get_dimensions();
-    let width = dimensions.0;
-    let height = dimensions.1;
-    let length = dimensions.2;
-    for x in 0..width {
-        for z in 0..length {
-            schematic.set_block(x, -1, z, BlockState::new("minecraft:gray_concrete".to_string()));
-        }
-    }
+    // let dimensions = schematic.get_dimensions();
+    // let width = dimensions.0;
+    // let height = dimensions.1;
+    // let length = dimensions.2;
+    // for x in 0..width {
+    //     for z in 0..length {
+    //         schematic.set_block(x, -1, z, BlockState::new("minecraft:gray_concrete".to_string()));
+    //     }
+    // }
     // print the schematic in json format
     // let json = print_json_schematic(&schematic);
     // println!("{}", json);
