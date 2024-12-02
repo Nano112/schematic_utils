@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use js_sys::{Array, Object};
 use serde::{Deserialize, Serialize};
 use quartz_nbt::{self, NbtTag, NbtCompound, NbtStructureError};
-use wasm_bindgen::JsValue;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NbtValue {
@@ -52,13 +50,6 @@ impl NbtMap {
         self.0.iter_mut()
     }
 
-    pub fn to_js_value(&self) -> JsValue {
-        let obj = Object::new();
-        for (key, value) in self.iter() {
-            js_sys::Reflect::set(&obj, &key.into(), &value.to_js_value()).unwrap();
-        }
-        obj.into()
-    }
 
     pub fn from_quartz_nbt(compound: &NbtCompound) -> Self {
         let mut map = NbtMap::new();
@@ -171,46 +162,6 @@ impl NbtValue {
         }
     }
 
-    pub fn to_js_value(&self) -> JsValue {
-        match self {
-            NbtValue::Byte(v) => JsValue::from(*v),
-            NbtValue::Short(v) => JsValue::from(*v),
-            NbtValue::Int(v) => JsValue::from(*v),
-            NbtValue::Long(v) => JsValue::from(*v as f64),  // JavaScript doesn't have 64-bit integers
-            NbtValue::Float(v) => JsValue::from(*v),
-            NbtValue::Double(v) => JsValue::from(*v),
-            NbtValue::ByteArray(v) => {
-                let arr = Array::new();
-                for &byte in v {
-                    arr.push(&JsValue::from(byte));
-                }
-                arr.into()
-            },
-            NbtValue::String(v) => JsValue::from_str(v),
-            NbtValue::List(v) => {
-                let arr = Array::new();
-                for item in v {
-                    arr.push(&item.to_js_value());
-                }
-                arr.into()
-            },
-            NbtValue::Compound(v) => v.to_js_value(),
-            NbtValue::IntArray(v) => {
-                let arr = Array::new();
-                for &int in v {
-                    arr.push(&JsValue::from(int));
-                }
-                arr.into()
-            },
-            NbtValue::LongArray(v) => {
-                let arr = Array::new();
-                for &long in v {
-                    arr.push(&JsValue::from(long as f64));  // JavaScript doesn't have 64-bit integers
-                }
-                arr.into()
-            },
-        }
-    }
 
     pub fn as_string(&self) -> Option<&String> {
         if let NbtValue::String(s) = self {
@@ -251,5 +202,67 @@ impl NbtValue {
         } else {
             None
         }
+    }
+}
+
+
+#[cfg(feature = "wasm")]
+mod wasm {
+    use super::*;
+    use js_sys::{Array, Object};
+    use wasm_bindgen::JsValue;
+
+    impl NbtMap {
+        pub fn to_js_value(&self) -> JsValue {
+            let obj = Object::new();
+            for (key, value) in self.iter() {
+                js_sys::Reflect::set(&obj, &key.into(), &value.to_js_value()).unwrap();
+            }
+            obj.into()
+        }
+    }
+
+    impl NbtValue {
+        pub fn to_js_value(&self) -> JsValue {
+            match self {
+                NbtValue::Byte(v) => JsValue::from(*v),
+                NbtValue::Short(v) => JsValue::from(*v),
+                NbtValue::Int(v) => JsValue::from(*v),
+                NbtValue::Long(v) => JsValue::from(*v as f64),  // JavaScript doesn't have 64-bit integers
+                NbtValue::Float(v) => JsValue::from(*v),
+                NbtValue::Double(v) => JsValue::from(*v),
+                NbtValue::ByteArray(v) => {
+                    let arr = Array::new();
+                    for &byte in v {
+                        arr.push(&JsValue::from(byte));
+                    }
+                    arr.into()
+                },
+                NbtValue::String(v) => JsValue::from_str(v),
+                NbtValue::List(v) => {
+                    let arr = Array::new();
+                    for item in v {
+                        arr.push(&item.to_js_value());
+                    }
+                    arr.into()
+                },
+                NbtValue::Compound(v) => v.to_js_value(),
+                NbtValue::IntArray(v) => {
+                    let arr = Array::new();
+                    for &int in v {
+                        arr.push(&JsValue::from(int));
+                    }
+                    arr.into()
+                },
+                NbtValue::LongArray(v) => {
+                    let arr = Array::new();
+                    for &long in v {
+                        arr.push(&JsValue::from(long as f64));  // JavaScript doesn't have 64-bit integers
+                    }
+                    arr.into()
+                },
+            }
+        }
+
     }
 }

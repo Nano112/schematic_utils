@@ -54,7 +54,7 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
 
     let merged_region = schematic.get_merged_region();
-
+    
     root.insert("Palette", convert_palette(&merged_region.palette).0);
     root.insert("PaletteMax", convert_palette(&merged_region.palette).1);
 
@@ -203,8 +203,11 @@ fn parse_block_state(input: &str) -> BlockState {
 fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
     let mut nbt_palette = NbtCompound::new();
     let mut max_id = 0;
-
+    nbt_palette.insert("minecraft:air", NbtTag::Int(0));
     for (id, block_state) in palette.iter().enumerate() {
+        if block_state.name == "minecraft:air" {
+            continue;
+        }
         let key = if block_state.properties.is_empty() {
             block_state.name.clone()
         } else {
@@ -325,7 +328,8 @@ mod tests {
     use std::io::Write;
     use std::path::Path;
     use super::*;
-    use crate::{UniversalSchematic, BlockState};
+    use crate::{UniversalSchematic, BlockState, SchematicWrapper};
+    use crate::litematic::{from_litematic, to_litematic};
 
     #[test]
     fn test_schematic_file_generation() {
@@ -441,5 +445,30 @@ mod tests {
 
         let mut schematic = from_schematic(&schem_data).expect("Failed to parse schematic");
         assert_eq!(schematic.metadata.name, Some("Unnamed".to_string()));
+    }
+
+    #[test]
+    fn test_conversion() {
+        let schem_name = "tests/samples/cutecounter.schem";
+        let output_litematic_name = "tests/output/cutecounter.litematic";
+        let output_schematic_name = "tests/output/cutecounter.schem";
+
+        //load the schem as a UniversalSchematic
+        let schem_data = fs::read(schem_name).expect("Failed to read schem file");
+        let schematic = from_schematic(&schem_data).expect("Failed to parse schematic");
+
+        //convert the UniversalSchematic to a Litematic
+        let litematic_output_data = to_litematic(&schematic).expect("Failed to convert to litematic");
+        let mut litematic_output_file = File::create(output_litematic_name).expect("Failed to create litematic file");
+        litematic_output_file.write_all(&litematic_output_data).expect("Failed to write litematic file");
+
+        //load back from the litematic file
+        let litematic_data = fs::read(output_litematic_name).expect("Failed to read litematic file");
+        let schematic_from_litematic = from_litematic(&litematic_data).expect("Failed to parse litematic");
+
+        //convert the Litematic back to a UniversalSchematic
+        let schematic_output_data = to_schematic(&schematic_from_litematic).expect("Failed to convert to schematic");
+        let mut schematic_output_file = File::create(output_schematic_name).expect("Failed to create schematic file");
+        schematic_output_file.write_all(&schematic_output_data).expect("Failed to write schematic file");
     }
 }
