@@ -328,7 +328,7 @@ mod tests {
     use std::io::Write;
     use std::path::Path;
     use super::*;
-    use crate::{UniversalSchematic, BlockState, SchematicWrapper};
+    use crate::{UniversalSchematic, BlockState};
     use crate::litematic::{from_litematic, to_litematic};
 
     #[test]

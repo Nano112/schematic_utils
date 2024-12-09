@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use minecraft_schematic_utils::{BlockState, litematic, print_json_schematic, schematic};
+use minecraft_schematic_utils::{BlockState, litematic, schematic};
 
 #[test]
 fn test_litematic_to_schem_conversion() {

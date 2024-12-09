@@ -35,9 +35,10 @@ pub struct BlockStateWrapper(pub(crate) BlockState);
 // All your existing WASM implementations go here...
 #[wasm_bindgen]
 impl SchematicWrapper {
+
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        console::log_1(&"SchematicWrapper created".into());
+        console::log_1(&"SchematicWrapper created bip asdfasdf".into());
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
 
@@ -47,6 +48,7 @@ impl SchematicWrapper {
     }
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
+        console::log_1(&"Parsing schematic data".into());
         if litematic::is_litematic(data) {
             self.from_litematic(data)
         } else if schematic::is_schematic(data) {

@@ -246,22 +246,18 @@ pub fn generate_truth_table(schematic: &UniversalSchematic) -> Vec<HashMap<Strin
 
     let mut truth_table = Vec::new();
 
-    // Generate all possible input combinations
     let input_combinations = generate_input_combinations(inputs.len());
 
     for combination in input_combinations {
-        // Set the inputs according to the current combination
         for (i, &input_pos) in inputs.iter().enumerate() {
             if combination[i] {
                 world.on_use_block(input_pos);
             }
         }
 
-        // Run the simulation
-        world.tick(20);  // Adjust the number of ticks as needed
+        world.tick(20);
         world.flush();
 
-        // Read the outputs
         let mut result = HashMap::new();
         for (i, &input_pos) in inputs.iter().enumerate() {
             result.insert(format!("Input {}", i), world.get_lever_power(input_pos));
@@ -272,10 +268,8 @@ pub fn generate_truth_table(schematic: &UniversalSchematic) -> Vec<HashMap<Strin
 
         truth_table.push(result);
 
-        // Reset the world for the next iteration
         world = MchprsWorld::new(schematic.clone());
     }
-
     truth_table
 }
 
@@ -372,7 +366,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use super::*;
-    use crate::{schematic, BlockPosition, BlockState};
+    use crate::{schematic, BlockState};
     use crate::universal_schematic::SimpleBlockMapping;
 
     fn get_sample_schematic() -> UniversalSchematic {
@@ -617,27 +611,27 @@ mod tests {
             }
         }
     }
-    #[test]
-    fn test_auto_truth_table_xor_gate() {
-        let schematic = get_comparator_xor_gate();
-        let truth_table = generate_truth_table(&schematic);
+#[test]
+fn test_auto_truth_table_xor_gate() {
+    let schematic = get_comparator_xor_gate();
+    let truth_table = generate_truth_table(&schematic);
 
-        println!("XOR Gate Truth Table:");
-        for row in &truth_table {
-            println!("{:?}", row);
-        }
-
-        assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
-
-        // Verify XOR behavior
-        for row in truth_table {
-            let input_a = row.get("Input 0").unwrap();
-            let input_b = row.get("Input 1").unwrap();
-            let output = row.get("Output 0").unwrap();
-
-            assert_eq!(*output, *input_a ^ *input_b);
-        }
+    println!("XOR Gate Truth Table:");
+    for row in &truth_table {
+        println!("{:?}", row);
     }
+
+    assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
+
+    // Verify XOR behavior
+    for row in truth_table {
+        let input_a = row.get("Input 0").unwrap();
+        let input_b = row.get("Input 1").unwrap();
+        let output = row.get("Output 0").unwrap();
+
+        assert_eq!(*output, *input_a ^ *input_b);
+    }
+}
 
     #[test]
     fn test_auto_truth_table_and_gate() {

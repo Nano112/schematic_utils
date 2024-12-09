@@ -154,6 +154,7 @@ impl UniversalSchematic {
     }
 
 
+
     pub fn get_json_string(&self) -> Result<String, String> {
         // Attempt to serialize the name
         let metadata_json = serde_json::to_string(&self.metadata)
