@@ -1,3 +1,23 @@
+# Nucleation v0.10.24
+
+Fixes the five Python integration reports #36–#40:
+
+- Export NBT compound keys in deterministic order, including nested compounds,
+  while preserving list order and array allocations. Transformation history
+  checks idempotence against serialized Sponge v3 bytes and records that scope.
+- Raise a real Python `NucleationError(Exception)` with a `code` attribute of
+  type `NucleationErrorCode`. Existing error constant aliases remain available.
+- Build reduced Python feature sets without referencing disabled Rust symbols,
+  including individually gated animation methods and their type stubs.
+- Use the correct Python module linkage and explicitly link libpython, android,
+  and log on Android/Termux. Missing interpreter development libraries fail
+  configuration instead of producing an unimportable extension.
+
+Regression coverage includes installed full/minimal/rendering-subset wheels,
+serialized artifact reproducibility, exception handling and generated stubs.
+Android linker configuration is tested; on-device import validation remains
+outstanding.
+
 # Nucleation v0.10.22
 
 The JavaScript bindings now treat wasm32 buffer addresses as unsigned, fixing
