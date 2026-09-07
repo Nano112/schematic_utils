@@ -139,3 +139,31 @@ for example `NUCLEATION_FEATURES=bridge,simulation`.
 ## License
 
 MIT
+
+## Building a smaller feature set
+
+Published wheels include `bridge-full`. A source build can select a smaller
+Cargo feature set, including transitive dependencies:
+
+```sh
+NUCLEATION_FEATURES=bridge pip install --no-binary=nucleation nucleation
+NUCLEATION_FEATURES=bridge,rendering,mc-tick pip install --no-binary=nucleation nucleation
+```
+
+`bridge` is required. Cargo's normal default features stay enabled. Disabled
+features omit their Python types and methods, including animation rendering
+methods. Enable `scripting-lua` or `scripting-js` explicitly when needed; a
+minimal build requires neither scripting engine. Selection reads the same
+Cargo feature definitions and Rust bridge gates for checkouts and sdists.
+
+On Android/Termux, the build explicitly links the interpreter library and
+`android`/`log`. Install matching Python development libraries; a missing
+interpreter library fails configuration. Ordinary Linux/macOS extensions keep
+nanobind's module linkage, without imposing a new libpython dependency.
+
+## Native errors
+
+Catch `nucleation.NucleationError` for engine failures and inspect `error.code`
+against `nucleation.NucleationErrorCode` constants. This also applies to
+`nucleation.core` and the `open`/`save` convenience methods. Python argument
+errors are not converted into engine errors.

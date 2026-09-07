@@ -18,6 +18,26 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new)
 
 
+
+def patch_errors() -> None:
+    path = Path("bindings/python/src/sub_modules/nucleation/NucleationError_binding.cpp")
+    source = path.read_text().replace('"NucleationError"', '"NucleationErrorCode"')
+    if "register_error_type" not in source:
+        end = source.index("\n}")
+        source = source[:end] + "\n    nucleation::python_compat::register_error_type(mod, e_class);\n" + source[end:]
+    path.write_text(source)
+    source = NANOBIND_COMMON.read_text()
+    if '#include "errors.hpp"' not in source:
+        source = source.replace('using namespace nb::literals;', 'using namespace nb::literals;\n#include "errors.hpp"')
+    source = source.replace('PyErr_SetObject(PyExc_Exception, errorPyV.ptr());',
+                            'nucleation::python_compat::set_result_error(errorPyV.ptr());')
+    start = source.find('                // PyErr_SetObject takes ownership')
+    if start != -1:
+        end = source.index('                Py_DECREF', start)
+        source = source[:start] + '                // The caster returned a new reference; the error retains its own.\n' + source[end:]
+    NANOBIND_COMMON.write_text(source)
+
+
 def main() -> None:
     source = SCHEMATIC_BINDING.read_text()
     source = replace_once(
@@ -65,6 +85,8 @@ def main() -> None:
         "        static constexpr auto Name = Caster::Name;\n",
     )
     NANOBIND_COMMON.write_text(source)
+
+    patch_errors()
 
     for path in sorted(Path("bindings/python/src").rglob("*")):
         if path.suffix not in {".cpp", ".hpp"}:

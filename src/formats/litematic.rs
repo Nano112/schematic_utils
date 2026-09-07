@@ -131,6 +131,7 @@ pub fn to_litematic_with_compression(
     }
 
     // Compress and return the NBT data
+    crate::nbt::canonicalize_compound(&mut root);
     let mut encoder = flate2::write::GzEncoder::new(Vec::new(), compression);
     quartz_nbt::io::write_nbt(
         &mut encoder,

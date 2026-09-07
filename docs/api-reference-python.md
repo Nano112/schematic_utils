@@ -123,7 +123,7 @@ margin. **For "how big is this build", use `tight_dimensions()`** (issue #5).
 `volume()` is the allocated volume; `block_count()` counts non-air blocks.
 Tight bounds follow current content, not mutation history: replacing a boundary
 block with air shrinks them, and `tight_bounds_min()` / `tight_bounds_max()`
-raise `NucleationError.NotFound` once the final non-air block is removed.
+raise `NucleationError` with code `NucleationErrorCode.NotFound` once the final non-air block is removed.
 
 ## Bulk block queries
 
@@ -242,3 +242,19 @@ The wheel also ships `py.typed` plus generated stubs for the complete compiled
 surface. Mypy, Pyright, IDE completion, and API-diff tooling therefore see the
 same signatures as runtime `help()`, including the hand-written `design` and
 `curation` veneers re-exported by the package.
+
+### Catching native errors
+
+`NucleationError` inherits `Exception`. Its `code` attribute is a
+`NucleationErrorCode`; the former `NucleationError.NotFound`-style constants
+remain aliases for compatibility. Argument type errors still raise `TypeError`.
+
+```python
+try:
+    block = schem.get_block(99, 99, 99)
+except nucleation.NucleationError as error:
+    if error.code == nucleation.NucleationErrorCode.NotFound:
+        block = None
+    else:
+        raise
+```

@@ -28,6 +28,28 @@ pub enum NbtValue {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NbtMap(HashMap<String, NbtValue>);
 
+/// Canonicalize compound keys recursively without copying array payloads or
+/// changing list order. Quartz preserves insertion order, so sorting the
+/// completed export tree makes bytes independent of HashMap iteration order.
+pub(crate) fn canonicalize_compound(compound: &mut NbtCompound) {
+    compound.inner_mut().sort_keys();
+    for value in compound.inner_mut().values_mut() {
+        canonicalize_tag(value);
+    }
+}
+
+fn canonicalize_tag(tag: &mut NbtTag) {
+    match tag {
+        NbtTag::Compound(compound) => canonicalize_compound(compound),
+        NbtTag::List(list) => {
+            for value in list.inner_mut() {
+                canonicalize_tag(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 impl Default for NbtMap {
     fn default() -> Self {
         Self::new()
@@ -74,10 +96,16 @@ impl NbtMap {
 
     pub fn to_quartz_nbt(&self) -> NbtCompound {
         let mut compound = NbtCompound::new();
-        for (key, value) in self.iter() {
+        for (key, value) in self.sorted_entries() {
             compound.insert(key, value.to_quartz_nbt());
         }
         compound
+    }
+
+    fn sorted_entries(&self) -> Vec<(&String, &NbtValue)> {
+        let mut entries: Vec<_> = self.iter().collect();
+        entries.sort_unstable_by(|a, b| a.0.cmp(b.0));
+        entries
     }
 
     pub fn inner(&self) -> &HashMap<String, NbtValue> {
@@ -565,7 +593,7 @@ pub mod io {
                 Ok(())
             }
             NbtValue::Compound(v) => {
-                for (name, tag) in v.iter() {
+                for (name, tag) in v.sorted_entries() {
                     write_u8(w, get_tag_id(tag))?;
                     write_string(w, name, endian)?;
                     write_payload(w, tag, endian)?;
@@ -657,5 +685,65 @@ mod bounded_nbt_tests {
             read_nbt_with_limits(&mut bytes.as_slice(), Endian::Big, NbtReadLimits::default())
                 .unwrap_err();
         assert!(error.to_string().contains("negative NBT collection"));
+    }
+}
+
+#[cfg(test)]
+mod deterministic_write_tests {
+    use super::*;
+
+    fn fixture(reverse: bool) -> NbtMap {
+        let mut child = NbtMap::new();
+        for key in if reverse {
+            ["z", "a", "m"]
+        } else {
+            ["m", "a", "z"]
+        } {
+            child.insert(key.into(), NbtValue::Long(9_007_199_254_740_993));
+        }
+        let mut root = NbtMap::new();
+        root.insert(
+            "nested".into(),
+            NbtValue::List(vec![NbtValue::Compound(child)]),
+        );
+        root.insert(
+            "ordered".into(),
+            NbtValue::List(vec![NbtValue::Int(2), NbtValue::Int(1)]),
+        );
+        root
+    }
+
+    #[test]
+    fn independent_maps_serialize_identically_in_both_endians_and_snbt() {
+        for endian in [Endian::Big, Endian::Little] {
+            let mut expected = Vec::new();
+            io::write_nbt(&mut expected, &fixture(false), "test", endian).unwrap();
+            for i in 0..16 {
+                let mut actual = Vec::new();
+                io::write_nbt(&mut actual, &fixture(i % 2 == 0), "test", endian).unwrap();
+                assert_eq!(expected, actual);
+            }
+        }
+        let expected = NbtTag::Compound(fixture(false).to_quartz_nbt()).to_snbt();
+        assert_eq!(
+            expected,
+            NbtTag::Compound(fixture(true).to_quartz_nbt()).to_snbt()
+        );
+    }
+
+    #[test]
+    fn canonicalization_preserves_list_order_and_array_allocations() {
+        let mut root = fixture(false).to_quartz_nbt();
+        let array = vec![1_i8; 1024];
+        let ptr = array.as_ptr();
+        root.insert("array", NbtTag::ByteArray(array));
+        let ordered = root.get::<_, &NbtTag>("ordered").unwrap().clone();
+        canonicalize_compound(&mut root);
+        assert_eq!(root.get::<_, &NbtTag>("ordered").unwrap(), &ordered);
+        if let NbtTag::ByteArray(array) = root.get::<_, &NbtTag>("array").unwrap() {
+            assert_eq!(array.as_ptr(), ptr);
+        } else {
+            panic!("array type changed");
+        }
     }
 }

@@ -18,16 +18,18 @@ the generated sources stay untouched under ``src/``.
 from .nucleation import *  # noqa: F401,F403 — the generated core, verbatim
 from . import nucleation as core  # noqa: F401 — explicit escape hatch
 
-from .design import (  # noqa: F401 — veneer overlays shadow core names
-    Bus,
-    CheckReport,
-    Design,
-    DesignCheckError,
-    Executor,
-    Flat,
-    Gate,
-    Style,
-)
+if hasattr(core, "Design"):
+    from .design import (  # noqa: F401 — veneer overlays shadow core names
+        Bus,
+        CheckReport,
+        Design,
+        DesignCheckError,
+        Executor,
+        Flat,
+        Gate,
+        Style,
+    )
+
 from .curation import (  # noqa: F401 — pure-Python corpus curation layer
     CuratedCorpus,
     CurationDecision,

@@ -29,7 +29,7 @@ inline void unwrap_void_result(
 
     NucleationError error = std::move(result).err().value();
     nb::object python_error = nb::cast(error);
-    PyErr_SetObject(PyExc_Exception, python_error.ptr());
+    set_result_error(python_error.ptr());
     throw nb::python_error();
 }
 

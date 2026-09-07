@@ -63,12 +63,27 @@ if(APPLE)
   target_link_libraries(nucleation_rust INTERFACE "-framework Metal" "-framework QuartzCore" "-framework CoreGraphics" "-framework CoreFoundation" "-framework Foundation")
 endif()
 
-file(GLOB_RECURSE SUBMODULE_FILES src/sub_modules/*.cpp)
+# Resolve feature aliases from Cargo and cfg gates from the Rust bridge. The
+# generated entry point must omit the same registrations as the source list.
+set(BINDING_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/selected-bindings")
+file(GLOB BRIDGE_SOURCES "${REPO_ROOT}/src/bridge/*.rs")
+file(GLOB_RECURSE BINDING_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${REPO_ROOT}/Cargo.toml" ${BRIDGE_SOURCES} ${BINDING_SOURCES}
+  "${CMAKE_CURRENT_SOURCE_DIR}/configure_bindings.py")
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/configure_bindings.py"
+    --repo "${REPO_ROOT}" --output "${BINDING_BUILD_DIR}" --features "${NUCLEATION_FEATURES}"
+  RESULT_VARIABLE BINDING_CONFIG_RESULT)
+if(NOT BINDING_CONFIG_RESULT EQUAL 0)
+  message(FATAL_ERROR "Could not select Python bindings for NUCLEATION_FEATURES=${NUCLEATION_FEATURES}")
+endif()
+include("${BINDING_BUILD_DIR}/bindings.cmake")
 nanobind_add_module(
   nucleation
   STABLE_ABI
   NB_STATIC
-  src/nucleation_ext.cpp
+  "${BINDING_BUILD_DIR}/nucleation_ext.cpp"
   ${SUBMODULE_FILES}
 )
 target_include_directories(nucleation PUBLIC "src/include")
@@ -82,7 +97,24 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE NB_PKG_DIR)
 target_include_directories(nucleation PRIVATE "${NB_PKG_DIR}/ext/robin_map/include")
 target_compile_features(nucleation PUBLIC cxx_std_20)
-target_link_libraries(nucleation PUBLIC nucleation_rust ${Python3_SABI_LIBRARY})
+target_link_libraries(nucleation PRIVATE nucleation_rust)
+# nanobind_add_module chooses Python::Module / Python::SABIModule. These
+# imported targets own the platform-specific ABI linkage; do not read a
+# Python3_* variable after find_package(Python).
+# Native Termux may identify the CMake host as Linux rather than Android.
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -c "import sys; print(int(hasattr(sys, 'getandroidapilevel') or sys.platform == 'android'))"
+  OUTPUT_VARIABLE PYTHON_ON_ANDROID OUTPUT_STRIP_TRAILING_WHITESPACE
+  RESULT_VARIABLE PYTHON_PLATFORM_RESULT)
+if(NOT PYTHON_PLATFORM_RESULT EQUAL 0)
+  message(FATAL_ERROR "Could not identify the Python target platform")
+endif()
+if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR PYTHON_ON_ANDROID STREQUAL "1")
+  # Bionic needs explicit libpython linkage. SABIModule can be a library-less
+  # interface target on Unix, so discover the embedding library for this host.
+  find_package(Python ${Python_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development.Embed)
+  target_link_libraries(nucleation PRIVATE Python::Python android log)
+endif()
 
 # Generate type information from nanobind's structured signatures. The
 # extension is a top-level module in the build tree and becomes the

@@ -225,6 +225,7 @@ fn to_schematic_v3(schematic: &UniversalSchematic, compression: Compression) -> 
         root.insert("NucleationTest", NbtTag::Compound(test));
     }
 
+    crate::nbt::canonicalize_compound(&mut root);
     let mut encoder = GzEncoder::new(Vec::new(), compression);
     quartz_nbt::io::write_nbt(
         &mut encoder,
@@ -330,6 +331,7 @@ fn to_schematic_v2(schematic: &UniversalSchematic, compression: Compression) -> 
         root.insert("NucleationTest", NbtTag::Compound(test));
     }
 
+    crate::nbt::canonicalize_compound(&mut root);
     let mut encoder = GzEncoder::new(Vec::new(), compression);
     quartz_nbt::io::write_nbt(
         &mut encoder,

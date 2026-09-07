@@ -15,6 +15,7 @@
 
 namespace nb = nanobind;
 using namespace nb::literals;
+#include "errors.hpp"
 
 namespace nanobind::detail
 {
@@ -122,9 +123,8 @@ namespace nanobind::detail
             auto errorPyV = ErrCaster::from_cpp(forward_like_<V>(std::move(value).err().value()), p, cl);
             if (errorPyV.is_valid())
             {
-                PyErr_SetObject(PyExc_Exception, errorPyV.ptr());
-                // PyErr_SetObject takes ownership (https://github.com/python/cpython/blob/fa73fd473f00dd231f59e44798a3d00a46322658/Python/errors.c#L151)
-                // but Nanobind expects Python to take ownership directly. So we decref after PyErr_SetObject takes ownership, to remove Nanobind's reference:
+                nucleation::python_compat::set_result_error(errorPyV.ptr());
+                // The caster returned a new reference; the error retains its own.
                 Py_DECREF(errorPyV.ptr());
             }
             else

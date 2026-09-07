@@ -50,7 +50,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes yosys
       - name: Build and install the Python bridge used by simulation checks
-        run: python -m pip install ./bindings/python
+        run: |
+          python -m pip install ./bindings/python pytest
+          python -m pytest -q bindings/python/tests
       - run: tools/dev.sh fast
       - name: sccache stats
         if: always()
@@ -119,7 +121,9 @@ jobs:
       - name: Install the Python wheel frontend
         run: python -m pip install build
       - name: Build and install the Python bridge used by simulation checks
-        run: python -m pip install ./bindings/python
+        run: |
+          python -m pip install ./bindings/python pytest
+          python -m pytest -q bindings/python/tests
       - run: tools/dev.sh full
       - name: sccache stats
         if: always()
@@ -143,3 +147,39 @@ jobs:
             exit 1
           fi
           echo "no tracked build artifacts"
+
+  python-feature-subsets:
+    name: Python subset (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [bridge, 'bridge,rendering,mc-tick']
+    env:
+      NUCLEATION_FEATURES: ${{ matrix.features }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: python-${{ matrix.features }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and test the installed subset wheel
+        run: |
+          python -m pip install ./bindings/python pytest cmake ninja 'nanobind>=2.12,<3'
+          python -m pytest -q bindings/python/tests
+      - name: Check Android linkage configuration
+        # Exercise the platform branch on this host; actual Android execution
+        # still requires a device/Termux. Verify the resulting linker inputs.
+        run: |
+          cmake -S bindings/python -B /tmp/android-link-check -G Ninja \
+            -DANDROID=TRUE -DPython_EXECUTABLE="$(command -v python)"
+          python - <<'PY'
+          from pathlib import Path
+          ninja = Path('/tmp/android-link-check/build.ninja').read_text()
+          link = next(line for line in ninja.splitlines() if 'LINK_LIBRARIES =' in line and '-landroid' in line)
+          assert '-llog' in link and 'libpython' in link, link
+          PY

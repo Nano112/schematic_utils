@@ -246,15 +246,24 @@ impl TransformPlan {
                     ("policy_accepted".to_string(), "passed".to_string()),
                 ]);
                 if self.is_deterministic() {
-                    let before = serde_json::to_vec(schematic)
+                    // Compare exported artifacts, not in-memory map equality.
+                    // History is appended below so verification cannot include
+                    // itself. Format conversion/reader normalization is separate.
+                    let before = crate::formats::schematic::to_schematic(schematic)
                         .map_err(|error| TransformError::InvalidPlan(error.to_string()))?;
                     let mut probe = schematic.clone();
-                    self.run(&mut probe, true)?;
-                    let after = serde_json::to_vec(&probe)
+                    let probe_report = self.run(&mut probe, true)?;
+                    let after = crate::formats::schematic::to_schematic(&probe)
                         .map_err(|error| TransformError::InvalidPlan(error.to_string()))?;
+                    verification.insert("idempotence_format".to_string(), "sponge_v3".to_string());
                     verification.insert(
                         "idempotence".to_string(),
-                        if before == after { "passed" } else { "failed" }.to_string(),
+                        if !probe_report.rejected && before == after {
+                            "passed"
+                        } else {
+                            "failed"
+                        }
+                        .to_string(),
                     );
                 } else {
                     verification.insert("idempotence".to_string(), "not_applicable".to_string());
@@ -2890,6 +2899,39 @@ mod tests {
             serde_json::to_value(&once).unwrap(),
             serde_json::to_value(&twice).unwrap()
         );
+    }
+
+    #[test]
+    fn transformation_artifacts_are_reproducible_across_fresh_decodes() {
+        use crate::formats::schematic::{
+            from_schematic, to_schematic, to_schematic_version, SchematicVersion,
+        };
+        let input = to_schematic(&sensitive_fixture()).unwrap();
+        for plan in [TransformPlan::canonical(), TransformPlan::registry_safe()] {
+            for version in [SchematicVersion::V2, SchematicVersion::V3] {
+                let transform = |data: &[u8]| {
+                    let mut schematic = from_schematic(data).unwrap();
+                    plan.apply(&mut schematic).unwrap();
+                    assert_eq!(
+                        schematic
+                            .metadata
+                            .transformation_history
+                            .last()
+                            .unwrap()
+                            .verification
+                            .get("idempotence")
+                            .map(String::as_str),
+                        Some("passed")
+                    );
+                    to_schematic_version(&schematic, version).unwrap()
+                };
+                let expected = transform(&input);
+                for _ in 0..16 {
+                    assert_eq!(expected, transform(&input));
+                }
+                assert_eq!(expected, transform(&expected));
+            }
+        }
     }
 
     #[test]

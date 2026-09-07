@@ -187,7 +187,12 @@ Successful plans append a content-addressed record to
 plan-schema version,
 lossless/quarantine flags, the non-sensitive summary, and a `verification` map.
 The core records plan validation, policy acceptance, and an actual transform-
-twice idempotence check (`passed`, `failed`, or `not_applicable`). It deliberately has
+twice idempotence check (`passed`, `failed`, or `not_applicable`). The check compares
+serialized Sponge v3 bytes before and after reapplying the passes, with
+`verification.idempotence_format = "sponge_v3"`. It excludes the record being
+created and does not certify other formats or format-conversion round trips.
+Compound keys are sorted recursively at export; list order is preserved.
+The record deliberately has
 no wall-clock timestamp, keeping deterministic output reproducible. Immediate
 reapplication of the same plan is deduplicated. Source provenance is never
 rewritten to record processing history.

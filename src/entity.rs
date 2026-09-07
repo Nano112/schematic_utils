@@ -172,6 +172,7 @@ impl Entity {
             compound.insert(key, Self::value_to_nbt_tag(value));
         }
 
+        crate::nbt::canonicalize_compound(&mut compound);
         NbtTag::Compound(compound)
     }
 

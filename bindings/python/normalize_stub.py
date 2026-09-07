@@ -31,6 +31,15 @@ def normalize(source: str) -> tuple[str, int, int, int]:
     # parameters.  Bare generics fail strict Mypy even though the generated
     # signature cannot express the callback's ABI more precisely.
     source = re.sub(r"(?<=: )Callable(?=[,)])", "Callable[..., object]", source)
+    # The native exception is a Python class, while its constants originate
+    # in Diplomat's nested enum. Stubgen cannot discover instance-only `code`.
+    error = re.search(r"^class NucleationError\(Exception\):\n.*?(?=^class |\Z)", source, re.M | re.S)
+    if error:
+        constants = re.findall(r"^    (\w+): NucleationErrorCode", error[0], re.M)
+        replacement = "class NucleationError(Exception):\n    code: NucleationErrorCode\n"
+        replacement += "".join(f"    {name}: NucleationErrorCode\n" for name in constants)
+        source = source[:error.start()] + replacement + "\n" + source[error.end():]
+    source = re.sub(r"^    __exception_type__:.*\n", "", source, flags=re.M)
     lines = source.splitlines()
     output: list[str] = []
     outer: str | None = None
@@ -135,6 +144,8 @@ def compose_public_stub(core_stub: str, overlay: str) -> str:
         if isinstance(node, ast.ImportFrom) and any(
             alias.name == "*" for alias in node.names
         ):
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module == "design" and "Design" not in core_names:
             continue
         overlay_imports.append(node)
         for alias in node.names:

@@ -149,6 +149,7 @@ pub fn to_structure_snbt(schematic: &UniversalSchematic) -> Result<Vec<u8>> {
         )),
     );
 
+    crate::nbt::canonicalize_compound(&mut root);
     Ok(NbtTag::Compound(root).to_snbt().into_bytes())
 }
 

@@ -5,9 +5,9 @@
 
 namespace nucleation {
 void add_NucleationError_binding(nb::module_ mod) {
-    nb::class_<nucleation::NucleationError> e_class(mod, "NucleationError");
+    nb::class_<nucleation::NucleationError> e_class(mod, "NucleationErrorCode");
 
-        nb::enum_<nucleation::NucleationError::Value> enumerator(e_class, "NucleationError");
+        nb::enum_<nucleation::NucleationError::Value> enumerator(e_class, "NucleationErrorCode");
         enumerator
             .value("NullArgument", nucleation::NucleationError::NullArgument)
             .value("InvalidArgument", nucleation::NucleationError::InvalidArgument)
@@ -30,6 +30,8 @@ void add_NucleationError_binding(nb::module_ mod) {
             .def("__repr__", [](const nucleation::NucleationError& self){
                 return nb::str(nb::cast(nucleation::NucleationError::Value(self)));
             });
+    nucleation::python_compat::register_error_type(mod, e_class);
+
 }
 
 }
